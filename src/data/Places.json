@@ -1,0 +1,81 @@
+[
+  {
+    "id": "example-spot",
+    "name": "Example Spot",
+    "address": "Seattle, WA",
+    "lat": 47.6101,
+    "lon": -122.3421,
+    "rating": 4.5,
+    "tags": [
+      "ramen",
+      "late-night"
+    ],
+    "notes": "My first saved spot",
+    "website": null
+  },
+  {
+    "id": "tavolata-...",
+    "name": "Tavolàta",
+    "address": "2323 2nd Avenue, Seattle, WA 98121, United States of America",
+    "lat": 47.613,
+    "lon": -122.345,
+    "rating": 4.6,
+    "tags": [
+      "italian",
+      "pasta",
+      "date-night"
+    ],
+    "notes": "Great happy hour.",
+    "website": null,
+    "city": "Seattle",
+    "neighborhood": "Belltown",
+    "cuisine": [
+      "Italian"
+    ],
+    "price": 2,
+    "wouldReturn": true,
+    "visitedAt": "2026-02-18",
+    "photo": null
+  },
+  {
+    "id": "tavol-ta-1771494962472",
+    "name": "Tavolàta",
+    "address": "Tavolàta, 3627 Stone Way North, Seattle, WA 98103, United States of America",
+    "lat": 47.6514721,
+    "lon": -122.3429128,
+    "city": "Seattle",
+    "neighborhood": "Fremont",
+    "cuisine": [],
+    "tags": [],
+    "visitedAt": "2026-02-19",
+    "price": null,
+    "rating": null,
+    "wouldReturn": null,
+    "notes": "",
+    "website": null,
+    "phone": null
+  },
+  {
+    "id": "tavolata-1771495322581",
+    "name": "Tavolata",
+    "address": "Tavolata, 501 East Pike Street, Seattle, WA 98122, United States of America",
+    "lat": 47.6139607,
+    "lon": -122.3253177,
+    "city": "Seattle",
+    "neighborhood": "First Hill",
+    "cuisine": [
+      "Italian"
+    ],
+    "tags": [
+      "italian",
+      "restaurant"
+    ],
+    "visitedAt": "2026-02-19",
+    "price": null,
+    "rating": null,
+    "wouldReturn": null,
+    "notes": "",
+    "website": "http://www.ethanstowellrestaurants.com/locations/tavolata-capitol-hill/",
+    "phone": "+1-206-420-8355"
+  }
+]
