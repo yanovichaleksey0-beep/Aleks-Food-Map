@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
-import placesData from "./data/places.json";
+import placesData from "./data/Places.json";
 
 // Bounds
 const AREA_BOUNDS = L.latLngBounds([47.45, -122.48], [48.02, -122.0]);
