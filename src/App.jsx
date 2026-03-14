@@ -158,9 +158,6 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTab, setMenuTab] = useState("aboutMap"); // "aboutMap" | "featured" | "stats"
 
-  // Resume viewer (inside account modal)
-  const [resumeViewerOpen, setResumeViewerOpen] = useState(false);
-
   // Close overlays on ESC
   useEffect(() => {
     const onKey = (e) => {
@@ -172,11 +169,6 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  // If you leave the Resume tab, collapse the viewer
-  useEffect(() => {
-    if (accountTab !== "resume") setResumeViewerOpen(false);
-  }, [accountTab]);
 
   // Location (optional, for nearest)
   const [myLoc, setMyLoc] = useState(null); // {lat, lon}
@@ -634,11 +626,11 @@ export default function App() {
   return (
     <>
       <div className="min-h-screen bg-neutral-950 text-neutral-100">
-        <div className="mx-auto max-w-6xl px-6 py-10">
-          <div className="flex items-center justify-between">
+        <div className="w-full px-5 py-8 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+          <div className="flex items-start justify-between gap-6">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight">Aleks Food Map</h1>
-              <p className="mt-2 text-neutral-400">
+              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Aleks Food Map</h1>
+              <p className="mt-3 text-base text-neutral-400 sm:text-lg">
                 Seattle • Bellevue • and anywhere I eat something worth sharing.
               </p>
             </div>
@@ -651,7 +643,7 @@ export default function App() {
                   setMenuOpen(true);
                   setMenuTab("aboutMap");
                 }}
-                className="min-h-[44px] rounded-full border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+                className="min-h-[48px] rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-100 backdrop-blur-sm hover:bg-white/8"
                 aria-label="Open map menu"
                 title="Menu"
               >
@@ -665,26 +657,26 @@ export default function App() {
                   setAccountOpen(true);
                   setAccountTab("about");
                 }}
-                className="min-h-[44px] flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+                className="min-h-[48px] flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-sm text-neutral-100 backdrop-blur-sm hover:bg-white/8"
                 aria-label="Open account"
                 title="Account"
               >
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-neutral-800 text-xs font-semibold">
+                <span className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/6 text-sm font-semibold text-neutral-100 backdrop-blur-sm">
                   A
                 </span>
                 <span className="hidden sm:block">Aleks</span>
               </button>
 
               {/* Version */}
-              <div className="rounded-full border border-neutral-800 bg-neutral-900 px-4 py-2 text-sm text-neutral-300">
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 backdrop-blur-sm">
                 v0.3
               </div>
             </div>
           </div>
 
-          <div className="mt-8 grid gap-6 md:grid-cols-3">
+          <div className="mt-8 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
             {/* Sidebar */}
-            <div className="md:col-span-1 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/35 p-5">
               <div className="text-sm text-neutral-400">Search & Filters</div>
 
               {/* Toast */}
@@ -736,27 +728,6 @@ export default function App() {
                 >
                   Copy link
                 </button>
-              </div>
-
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={exportPlaces}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
-                >
-                  Export JSON
-                </button>
-                <button
-                  type="button"
-                  onClick={clearLocalEdits}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
-                >
-                  Reset edits
-                </button>
-              </div>
-
-              <div className="mt-2 text-[11px] text-neutral-500">
-                Quick-edits save in this browser. Export JSON to make them permanent in your repo.
               </div>
 
               {/* Filter row */}
@@ -1071,14 +1042,14 @@ export default function App() {
             </div>
 
             {/* Map */}
-            <div className="md:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/35 p-5">
               <div className="text-sm text-neutral-400">Map</div>
 
               <div className="mt-3 overflow-hidden rounded-2xl border border-neutral-800">
                 <MapContainer
                   center={[47.6062, -122.3321]}
                   zoom={11}
-                  style={{ height: 520, width: "100%" }}
+                  style={{ height: "72vh", minHeight: 620, width: "100%" }}
                   maxBounds={AREA_BOUNDS}
                   maxBoundsViscosity={1.0}
                   whenReady={(e) => {
@@ -1232,44 +1203,42 @@ export default function App() {
                 ) : null}
 
                 {accountTab === "resume" ? (
-                  <div className="space-y-4 text-base md:text-lg">
-                    {!resumeViewerOpen ? (
-                      <>
-                        <div className="max-w-[680px] leading-[1.8] text-neutral-300">
-                          One button is enough — viewing a PDF is basically the first step to downloading/printing.
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setResumeViewerOpen(true)}
-                          className="min-h-[44px] w-full rounded-xl bg-neutral-100 px-5 py-3 text-center text-base font-medium text-neutral-950 hover:bg-neutral-200 md:text-lg"
-                        >
-                          View Resume
-                        </button>
-                      </>
-                    ) : (
-                      <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950/60">
-                        <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
-                          <div className="text-sm text-neutral-300">Resume (PDF)</div>
-                          <div className="flex items-center gap-3">
-                            <a
-                              href={RESUME_URL}
-                              download
-                              className="text-sm text-neutral-200 underline underline-offset-4 hover:text-neutral-100"
-                            >
-                              Download
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => setResumeViewerOpen(false)}
-                              className="min-h-[44px] rounded-lg px-3 text-sm text-neutral-300 hover:text-neutral-100"
-                            >
-                              Hide
-                            </button>
-                          </div>
-                        </div>
-                        <iframe title="Resume PDF" src={RESUME_URL} className="h-[60vh] w-full bg-white" />
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(242,233,217,0.55)]">
+                        Resume
                       </div>
-                    )}
+
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          href={RESUME_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="min-h-[44px] rounded-full border-2 border-[rgba(212,194,161,0.92)] bg-[rgba(212,194,161,0.14)] px-4 py-2 text-sm font-medium text-[#F2E9D9] transition-colors hover:bg-[rgba(212,194,161,0.20)]"
+                        >
+                          Open Full Resume
+                        </a>
+
+                        <a
+                          href={RESUME_URL}
+                          download
+                          className="min-h-[44px] rounded-full border-2 border-[rgba(242,233,217,0.16)] bg-[rgba(242,233,217,0.06)] px-4 py-2 text-sm font-medium text-[rgba(242,233,217,0.82)] transition-colors hover:bg-[rgba(242,233,217,0.10)] hover:border-[rgba(242,233,217,0.26)]"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] p-3 md:p-4">
+                      <div className="relative overflow-hidden rounded-xl bg-white shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                        <iframe
+                          title="Resume Preview"
+                          src={`${RESUME_URL}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
+                          className="h-[420px] w-full bg-white md:h-[520px]"
+                        />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white to-transparent" />
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 
@@ -1390,6 +1359,26 @@ export default function App() {
                     </p>
                     <p className="max-w-[640px] leading-relaxed text-neutral-400">
                       Tip: click a card to fly to the pin. Use “Copy link” to share the current view.
+                    </p>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={exportPlaces}
+                        className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                      >
+                        Export JSON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearLocalEdits}
+                        className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                      >
+                        Reset edits
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      Quick-edits save in this browser. Export JSON to make them permanent in your repo.
                     </p>
                   </div>
                 ) : null}
