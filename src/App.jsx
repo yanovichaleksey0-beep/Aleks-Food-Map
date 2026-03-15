@@ -10,7 +10,7 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
 import placesData from "./data/Places.json";
 
-// Leaflet marker icon fix (Vite)
+// Leaflet marker icon fix (Vite) — kept as fallback
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
@@ -21,6 +21,133 @@ L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
 });
+
+// ── Continuous rating → color (red→orange→yellow→green) ──
+function lerpColor(a, b, t) {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  const rr = Math.round(ar + (br - ar) * t);
+  const rg = Math.round(ag + (bg - ag) * t);
+  const rb = Math.round(ab + (bb - ab) * t);
+  return `rgb(${rr},${rg},${rb})`;
+}
+
+// Slightly desaturated premium stops: red → orange → amber → green
+// Bright red → orange → yellow → lime → green across 1–5
+const COLOR_STOPS = [
+  { at: 0,    hex: 0xE59A34 },  // orange       (1)
+  { at: 0.61, hex: 0xE1BF4A },  // gold         (6.5)
+  { at: 0.72, hex: 0x74C56C },  // soft green   (7.5)
+  { at: 1,    hex: 0x3FA85A },  // rich green   (10)
+];
+
+function ratingToHex(rating) {
+  const r = Number(rating);
+  if (!Number.isFinite(r) || r <= 0) return null;
+  const t = Math.max(0, Math.min(1, (r - 1) / 9)); // 1–10 → 0–1
+  for (let i = 0; i < COLOR_STOPS.length - 1; i++) {
+    const a = COLOR_STOPS[i], b = COLOR_STOPS[i + 1];
+    if (t >= a.at && t <= b.at) {
+      const local = (t - a.at) / (b.at - a.at);
+      return lerpColor(a.hex, b.hex, local);
+    }
+  }
+  return lerpColor(COLOR_STOPS.at(-2).hex, COLOR_STOPS.at(-1).hex, 1);
+}
+
+const UNRATED_COLOR = "#94a3b8";
+
+// Keep a categorical bucket name for popup badges / legend
+function ratingColor(rating) {
+  if (rating == null) return "gray";
+  const r = Number(rating);
+  if (!Number.isFinite(r) || r === 0) return "gray";
+  if (r >= 9.0) return "green";
+  if (r >= 7.0) return "softgreen";
+  if (r >= 5.0) return "gold";
+  return "orange";
+}
+
+function ratingLabel(rating) {
+  if (rating == null) return "New";
+  const r = Number(rating);
+  if (!Number.isFinite(r) || r === 0) return "New";
+  return r % 1 === 0 ? String(r) : r.toFixed(1);
+}
+
+// Price → font-weight
+function priceFontWeight(price) {
+  const p = Number(price);
+  if (p >= 3) return 800;
+  if (p === 2) return 650;
+  return 500;
+}
+
+// Decide text color for contrast: dark text on light fills, white on dark fills
+function markerTextColor(rating) {
+  const r = Number(rating);
+  if (!Number.isFinite(r) || r <= 0) return "#fff";
+  const t = Math.max(0, Math.min(1, (r - 1) / 9)); // 1–10 → 0–1
+  // Yellow / orange / lime zone needs dark text for readability
+  return (t > 0.25 && t < 0.7) ? "#2c1a0e" : "#fff";
+}
+
+function makeRatingIcon(rating, isSelected, price, name) {
+  const bg = ratingToHex(rating) || UNRATED_COLOR;
+  const label = ratingLabel(rating);
+  const fw = priceFontWeight(price);
+  const txtColor = markerTextColor(rating);
+  const cls = isSelected ? "beli-marker selected" : "beli-marker";
+
+  const title = name
+    ? `${name}, rating ${label}${price ? `, price ${"$".repeat(Number(price))}` : ""}`
+    : `Rating ${label}`;
+
+  const isNew = label === "New";
+
+  return L.divIcon({
+    className: "",
+    iconSize: [32, 38],
+    iconAnchor: [16, 38],
+    popupAnchor: [0, -32],
+    html: `
+      <div
+        class="${cls}"
+        style="--pin-bg:${bg};--pin-fg:${txtColor};--pin-fw:${fw}"
+        aria-label="${title}"
+        title="${title}"
+      >
+        <div class="beli-marker__nub"></div>
+        <div class="beli-marker__body ${isNew ? "is-new" : ""}">
+          <span class="beli-marker__label">${label}</span>
+        </div>
+      </div>
+    `,
+  });
+}
+
+// Cluster icon factory — color by average rating (continuous)
+function createClusterIcon(cluster) {
+  const markers = cluster.getAllChildMarkers();
+  const count = markers.length;
+
+  let sum = 0;
+  let rated = 0;
+  for (const m of markers) {
+    const r = m.options._rating;
+    if (Number.isFinite(r) && r > 0) { sum += r; rated++; }
+  }
+  const avg = rated > 0 ? sum / rated : 0;
+  const bg = ratingToHex(avg) || UNRATED_COLOR;
+
+  const size = count < 10 ? 36 : count < 30 ? 42 : 48;
+  const txtColor = avg > 0 ? markerTextColor(avg) : "#fff";
+  return L.divIcon({
+    html: `<div class="cluster-badge" style="width:${size}px;height:${size}px;background:${bg};color:${txtColor}">${count}</div>`,
+    className: "",
+    iconSize: [size, size],
+  });
+}
 
 // Bounds
 const AREA_BOUNDS = L.latLngBounds([47.45, -122.48], [48.02, -122.0]);
@@ -129,7 +256,7 @@ function markerInstance(ref) {
 export default function App() {
   const STADIA_KEY = import.meta.env.VITE_STADIA_KEY;
   const TILE_URL = STADIA_KEY
-    ? `https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=${STADIA_KEY}`
+    ? `https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=${STADIA_KEY}`
     : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
   const RESUME_URL = "/Aleksey_Yanovich_Resume.pdf";
@@ -489,6 +616,23 @@ export default function App() {
     return arr;
   }, [filtered, sort, myLoc]);
 
+  // Active filter pills for map overlay
+  const activeFilters = useMemo(() => {
+    const pills = [];
+    if (q) pills.push({ key: "q", label: `"${q}"`, clear: () => setQ("") });
+    if (city) pills.push({ key: "city", label: city, clear: () => setCity("") });
+    if (cuisine) pills.push({ key: "cuisine", label: cuisine, clear: () => setCuisine("") });
+    if (neighborhood) pills.push({ key: "hood", label: neighborhood, clear: () => setNeighborhood("") });
+    if (tag) pills.push({ key: "tag", label: `#${tag}`, clear: () => setTag("") });
+    if (price > 0) pills.push({ key: "price", label: priceLabel(price), clear: () => setPrice(0) });
+    if (minRating > 0) pills.push({ key: "rating", label: `${minRating}+★`, clear: () => setMinRating(0) });
+    if (wouldReturn) pills.push({ key: "return", label: "Would return", clear: () => setWouldReturn(false) });
+    return pills;
+  }, [q, city, cuisine, neighborhood, tag, price, minRating, wouldReturn]);
+
+  // Selected place for bottom card
+  const selectedPlace = selectedId != null ? places.find(p => p.id === selectedId) : null;
+
   function flyToPlace(p) {
     if (!Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lon))) return;
 
@@ -556,21 +700,21 @@ export default function App() {
       base,
       "box-border select-none no-underline",
       "transition-colors duration-150",
-      "focus:outline-none focus:ring-2 focus:ring-[rgba(212,194,161,0.35)] focus:ring-offset-0",
+      "focus:outline-none focus:ring-2 focus:ring-[rgba(22,93,110,0.35)] focus:ring-offset-0",
 
       active
         ? [
-            "bg-[rgba(212,194,161,0.14)]",
+            "bg-[rgba(22,93,110,0.14)]",
             // ✅ bolder + higher-contrast border
-            "border-[rgba(212,194,161,0.92)]",
-            "text-[#F2E9D9]",
+            "border-[rgba(22,93,110,0.92)]",
+            "text-[#1F2A2E]",
           ].join(" ")
         : [
-            "bg-[rgba(242,233,217,0.06)]",
-            "border-[rgba(242,233,217,0.16)]",
-            "text-[rgba(242,233,217,0.82)]",
-            "hover:bg-[rgba(242,233,217,0.10)]",
-            "hover:border-[rgba(242,233,217,0.26)]",
+            "bg-[rgba(31,42,46,0.06)]",
+            "border-[rgba(31,42,46,0.16)]",
+            "text-[rgba(31,42,46,0.82)]",
+            "hover:bg-[rgba(31,42,46,0.10)]",
+            "hover:border-[rgba(31,42,46,0.26)]",
           ].join(" "),
     ].join(" ");
   }
@@ -587,17 +731,17 @@ export default function App() {
       <Row
         {...rowProps}
         className={[
-          "flex items-center justify-between gap-4 rounded-xl border border-neutral-800 bg-neutral-950/50 px-4 py-3",
-          href ? "hover:bg-neutral-900" : "",
+          "flex items-center justify-between gap-4 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF]/50 px-4 py-3",
+          href ? "hover:bg-[#F1EEE6]" : "",
         ].join(" ")}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-neutral-800 bg-neutral-950 text-sm text-neutral-200">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#E0DCD4] bg-[#F7F5EF] text-sm text-[#2A3A3E]">
             {icon}
           </span>
           <div className="min-w-0 leading-tight">
-            <div className="font-medium text-neutral-100">{label}</div>
-            <div className="truncate text-sm text-neutral-300 md:text-base">{value}</div>
+            <div className="font-medium text-[#1F2A2E]">{label}</div>
+            <div className="truncate text-sm text-[#5A6B6E] md:text-base">{value}</div>
           </div>
         </div>
 
@@ -610,14 +754,14 @@ export default function App() {
                 e.stopPropagation();
                 copyText(copyValue, `${label} copied`);
               }}
-              className="grid h-11 w-11 place-items-center rounded-lg border border-neutral-800 bg-neutral-950 text-xs text-neutral-200 hover:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-white/25"
+              className="grid h-11 w-11 place-items-center rounded-lg border border-[#E0DCD4] bg-[#F7F5EF] text-xs text-[#2A3A3E] hover:bg-[#F1EEE6] focus:outline-none focus:ring-2 focus:ring-white/25"
               aria-label={`Copy ${label}`}
               title={`Copy ${label}`}
             >
               ⧉
             </button>
           ) : null}
-          {href ? <span className="text-neutral-500">↗</span> : null}
+          {href ? <span className="text-[#B0BAB8]">↗</span> : null}
         </div>
       </Row>
     );
@@ -625,12 +769,12 @@ export default function App() {
 
   return (
     <>
-      <div className="min-h-screen bg-neutral-950 text-neutral-100">
+      <div className="min-h-screen bg-[#F7F5EF] text-[#1F2A2E]">
         <div className="w-full px-5 py-8 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
           <div className="flex items-start justify-between gap-6">
             <div>
               <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Aleks Food Map</h1>
-              <p className="mt-3 text-base text-neutral-400 sm:text-lg">
+              <p className="mt-3 text-base text-[#8A9A9E] sm:text-lg">
                 Seattle • Bellevue • and anywhere I eat something worth sharing.
               </p>
             </div>
@@ -643,7 +787,7 @@ export default function App() {
                   setMenuOpen(true);
                   setMenuTab("aboutMap");
                 }}
-                className="min-h-[48px] rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-100 backdrop-blur-sm hover:bg-white/8"
+                className="min-h-[48px] rounded-full border border-[#165D6E]/30 bg-[#F1EEE6]/80 px-4 py-2 text-sm text-[#2A3A3E] backdrop-blur-sm hover:bg-[#E0DCD4] hover:border-[#165D6E]/50"
                 aria-label="Open map menu"
                 title="Menu"
               >
@@ -657,18 +801,18 @@ export default function App() {
                   setAccountOpen(true);
                   setAccountTab("about");
                 }}
-                className="min-h-[48px] flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-sm text-neutral-100 backdrop-blur-sm hover:bg-white/8"
+                className="min-h-[48px] flex items-center gap-3 rounded-full border border-[#165D6E]/30 bg-[#F1EEE6]/80 px-3.5 py-2 text-sm text-[#2A3A3E] backdrop-blur-sm hover:bg-[#E0DCD4] hover:border-[#165D6E]/50"
                 aria-label="Open account"
                 title="Account"
               >
-                <span className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/6 text-sm font-semibold text-neutral-100 backdrop-blur-sm">
+                <span className="grid h-10 w-10 place-items-center rounded-full border-2 border-[#165D6E]/60 bg-[#F1EEE6] text-sm font-bold text-[#165D6E] shadow-[0_0_8px_rgba(22,93,110,0.15)]">
                   A
                 </span>
                 <span className="hidden sm:block">Aleks</span>
               </button>
 
               {/* Version */}
-              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 backdrop-blur-sm">
+              <div className="rounded-full border border-[#165D6E]/25 bg-[#F1EEE6]/80 px-4 py-2 text-sm text-[#165D6E]/80 backdrop-blur-sm">
                 v0.3
               </div>
             </div>
@@ -676,8 +820,8 @@ export default function App() {
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
             {/* Sidebar */}
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/35 p-5">
-              <div className="text-sm text-neutral-400">Search & Filters</div>
+            <div className="rounded-2xl border border-[#E0DCD4] bg-[#F1EEE6]/35 p-5">
+              <div className="text-sm text-[#8A9A9E]">Search & Filters</div>
 
               {/* Toast */}
               {toast ? (
@@ -688,7 +832,7 @@ export default function App() {
                       ? "border-emerald-900 bg-emerald-950/40 text-emerald-200"
                       : toast.variant === "error"
                       ? "border-red-900 bg-red-950/40 text-red-200"
-                      : "border-neutral-800 bg-neutral-950/60 text-neutral-200",
+                      : "border-[#E0DCD4] bg-[#F7F5EF]/60 text-[#2A3A3E]",
                   ].join(" ")}
                   role="status"
                   aria-live="polite"
@@ -696,7 +840,7 @@ export default function App() {
                   <span className="truncate">{toast.message}</span>
                   <button
                     onClick={() => setToast(null)}
-                    className="min-h-[44px] rounded-lg border border-transparent px-2 py-1 text-xs text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900"
+                    className="min-h-[44px] rounded-lg border border-transparent px-2 py-1 text-xs text-[#5A6B6E] hover:border-[#D0CCC4] hover:bg-[#F1EEE6]"
                     aria-label="Dismiss"
                     type="button"
                   >
@@ -709,7 +853,7 @@ export default function App() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="ramen, Belltown, $$$, date-night..."
-                className="mt-3 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 outline-none focus:border-neutral-600"
+                className="mt-3 w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] placeholder:text-[#B0BAB8] outline-none focus:border-[#2E7682]"
               />
 
               {/* Buttons */}
@@ -717,14 +861,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                 >
                   Clear
                 </button>
                 <button
                   type="button"
                   onClick={copyLink}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                 >
                   Copy link
                 </button>
@@ -735,7 +879,7 @@ export default function App() {
                 <select
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
                 >
                   <option value="">City</option>
                   {facets.cities.map((c) => (
@@ -748,7 +892,7 @@ export default function App() {
                 <select
                   value={neighborhood}
                   onChange={(e) => setNeighborhood(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
                 >
                   <option value="">Neighborhood</option>
                   {facets.hoods.map((h) => (
@@ -761,7 +905,7 @@ export default function App() {
                 <select
                   value={cuisine}
                   onChange={(e) => setCuisine(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
                 >
                   <option value="">Cuisine</option>
                   {facets.cuisines.map((c) => (
@@ -774,7 +918,7 @@ export default function App() {
                 <select
                   value={tag}
                   onChange={(e) => setTag(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
                 >
                   <option value="">Tag</option>
                   {facets.tags.map((t) => (
@@ -787,7 +931,7 @@ export default function App() {
                 <select
                   value={price}
                   onChange={(e) => setPrice(Number(e.target.value))}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
                 >
                   <option value={0}>Price</option>
                   <option value={1}>$</option>
@@ -799,7 +943,7 @@ export default function App() {
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm"
+                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
                 >
                   {SORTS.map((s) => (
                     <option key={s.value} value={s.value}>
@@ -811,7 +955,7 @@ export default function App() {
 
               {/* Toggles */}
               <div className="mt-3 flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-sm text-neutral-300">
+                <label className="flex items-center gap-2 text-sm text-[#5A6B6E]">
                   <input
                     type="checkbox"
                     checked={wouldReturn}
@@ -820,12 +964,12 @@ export default function App() {
                   Would return
                 </label>
 
-                <div className="flex items-center gap-2 text-sm text-neutral-400">
+                <div className="flex items-center gap-2 text-sm text-[#8A9A9E]">
                   Min rating{" "}
                   <select
                     value={minRating}
                     onChange={(e) => setMinRating(Number(e.target.value))}
-                    className="min-h-[36px] rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-sm"
+                    className="min-h-[36px] rounded-lg border border-[#E0DCD4] bg-[#F7F5EF] px-2 py-1 text-sm"
                   >
                     <option value={0}>Any</option>
                     <option value={3}>3.0+</option>
@@ -842,7 +986,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={requestLocation}
-                    className="min-h-[44px] w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                    className="min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                   >
                     {myLoc ? "Update my location" : "Use my location"}
                   </button>
@@ -851,7 +995,7 @@ export default function App() {
               ) : null}
 
               {/* Results count */}
-              <div className="mt-4 text-xs text-neutral-500">
+              <div className="mt-4 text-xs text-[#B0BAB8]">
                 {sorted.length} / {places.length} spots
               </div>
 
@@ -874,8 +1018,8 @@ export default function App() {
                       className={[
                         "rounded-2xl border p-3 transition",
                         selectedId === p.id
-                          ? "border-neutral-500 bg-neutral-800/40"
-                          : "border-neutral-800 bg-neutral-950/40 hover:bg-neutral-900/50",
+                          ? "border-[#2E7682] bg-[#E0DCD4]/40"
+                          : "border-[#E0DCD4] bg-[#F7F5EF]/40 hover:bg-[#F1EEE6]/50",
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -883,17 +1027,17 @@ export default function App() {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="font-semibold">{p.name}</div>
-                              <div className="mt-1 text-xs text-neutral-400">
+                              <div className="mt-1 text-xs text-[#8A9A9E]">
                                 {p.neighborhood ? `${p.neighborhood} • ` : ""}
                                 {p.city || ""}
                               </div>
                             </div>
 
                             <div className="text-right">
-                              <div className="text-sm text-neutral-200">
-                                {p.rating != null ? `${Number(p.rating).toFixed(1)}★` : "No rating"}
+                              <div className="text-sm text-[#2A3A3E]">
+                                {ratingLabel(p.rating) === "New" ? "New" : `${ratingLabel(p.rating)}★`}
                               </div>
-                              <div className="text-xs text-neutral-500">
+                              <div className="text-xs text-[#B0BAB8]">
                                 {p.price ? priceLabel(p.price) : ""}
                                 {dist != null ? ` • ${dist.toFixed(1)} mi` : ""}
                               </div>
@@ -904,7 +1048,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => (isEditing ? cancelEdit() : startEdit(p))}
-                          className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:bg-neutral-900"
+                          className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-xs text-[#2A3A3E] hover:bg-[#F1EEE6]"
                         >
                           {isEditing ? "Close" : "Edit"}
                         </button>
@@ -921,7 +1065,7 @@ export default function App() {
                           {p.tags.slice(0, 6).map((t) => (
                             <span
                               key={t}
-                              className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-300"
+                              className="rounded-full border border-[#E0DCD4] bg-[#F1EEE6] px-2 py-0.5 text-[11px] text-[#5A6B6E]"
                             >
                               {t}
                             </span>
@@ -930,13 +1074,13 @@ export default function App() {
                       ) : null}
 
                       {/* Notes */}
-                      {p.notes ? <div className="mt-2 text-sm text-neutral-300">{p.notes}</div> : null}
+                      {p.notes ? <div className="mt-2 text-sm text-[#5A6B6E]">{p.notes}</div> : null}
 
                       {/* Edit panel */}
                       {isEditing ? (
-                        <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950/60 p-3">
+                        <div className="mt-3 rounded-2xl border border-[#E0DCD4] bg-[#F7F5EF]/60 p-3">
                           <div className="grid grid-cols-2 gap-2">
-                            <label className="text-xs text-neutral-400">
+                            <label className="text-xs text-[#8A9A9E]">
                               Rating
                               <input
                                 value={draft?.rating ?? ""}
@@ -946,16 +1090,16 @@ export default function App() {
                                 min="0"
                                 max="5"
                                 placeholder="4.5"
-                                className="mt-1 min-h-[44px] w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                                className="mt-1 min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
                               />
                             </label>
 
-                            <label className="text-xs text-neutral-400">
+                            <label className="text-xs text-[#8A9A9E]">
                               Price
                               <select
                                 value={draft?.price ?? ""}
                                 onChange={(e) => setDraft((d) => ({ ...(d || {}), price: e.target.value }))}
-                                className="mt-1 min-h-[44px] w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                                className="mt-1 min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
                               >
                                 <option value="">—</option>
                                 <option value="1">$</option>
@@ -966,7 +1110,7 @@ export default function App() {
                             </label>
                           </div>
 
-                          <label className="mt-3 flex items-center gap-2 text-sm text-neutral-300">
+                          <label className="mt-3 flex items-center gap-2 text-sm text-[#5A6B6E]">
                             <input
                               type="checkbox"
                               checked={!!draft?.wouldReturn}
@@ -975,24 +1119,24 @@ export default function App() {
                             Would return
                           </label>
 
-                          <label className="mt-3 block text-xs text-neutral-400">
+                          <label className="mt-3 block text-xs text-[#8A9A9E]">
                             Photo URL
                             <input
                               value={draft?.photo ?? ""}
                               onChange={(e) => setDraft((d) => ({ ...(d || {}), photo: e.target.value }))}
                               placeholder="https://..."
-                              className="mt-1 min-h-[44px] w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                              className="mt-1 min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
                             />
                           </label>
 
-                          <label className="mt-3 block text-xs text-neutral-400">
+                          <label className="mt-3 block text-xs text-[#8A9A9E]">
                             Notes
                             <textarea
                               value={draft?.notes ?? ""}
                               onChange={(e) => setDraft((d) => ({ ...(d || {}), notes: e.target.value }))}
                               rows={3}
                               placeholder="What did you get? Was it worth it?"
-                              className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                              className="mt-1 w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
                             />
                           </label>
 
@@ -1000,14 +1144,14 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => saveEdit(p.id)}
-                              className="min-h-[44px] flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                              className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                             >
                               Save
                             </button>
                             <button
                               type="button"
                               onClick={cancelEdit}
-                              className="min-h-[44px] flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                              className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                             >
                               Cancel
                             </button>
@@ -1020,7 +1164,7 @@ export default function App() {
                           href={mapsLink(p)}
                           target="_blank"
                           rel="noreferrer"
-                          className="min-h-[44px] flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-center text-sm text-neutral-200 hover:bg-neutral-900"
+                          className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-center text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                         >
                           Open in Maps
                         </a>
@@ -1029,7 +1173,7 @@ export default function App() {
                             href={p.website}
                             target="_blank"
                             rel="noreferrer"
-                            className="min-h-[44px] flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-center text-sm text-neutral-200 hover:bg-neutral-900"
+                            className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-center text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                           >
                             Website
                           </a>
@@ -1042,10 +1186,10 @@ export default function App() {
             </div>
 
             {/* Map */}
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/35 p-5">
-              <div className="text-sm text-neutral-400">Map</div>
+            <div className="rounded-2xl border border-[#E0DCD4] bg-[#F1EEE6]/35 p-5">
+              <div className="text-sm text-[#8A9A9E]">Map</div>
 
-              <div className="mt-3 overflow-hidden rounded-2xl border border-neutral-800">
+              <div className="relative mt-3 overflow-hidden rounded-2xl border border-[#E0DCD4]">
                 <MapContainer
                   center={[47.6062, -122.3321]}
                   zoom={11}
@@ -1067,19 +1211,15 @@ export default function App() {
                 >
                   <TileLayer url={TILE_URL} maxZoom={20} attribution="&copy; OpenStreetMap contributors" />
 
-                  {/* ✅ CLUSTERING */}
-                  <MarkerClusterGroup
-                    chunkedLoading
-                    showCoverageOnHover={false}
-                    spiderfyOnMaxZoom
-                    disableClusteringAtZoom={17}
-                  >
-                    {placesWithCoords
-                      .filter((p) => sorted.some((s) => s.id === p.id))
-                      .map((p) => (
+                  {placesWithCoords
+                    .filter((p) => sorted.some((s) => s.id === p.id))
+                    .map((p) => (
                         <Marker
                           key={p.id}
                           position={[Number(p.lat), Number(p.lon)]}
+                          icon={makeRatingIcon(p.rating, selectedId === p.id, p.price, p.name)}
+                          zIndexOffset={selectedId === p.id ? 1000 : 0}
+                          _rating={p.rating != null ? Number(p.rating) : undefined}
                           ref={(ref) => {
                             if (ref) markerRefs.current[p.id] = ref;
                           }}
@@ -1093,21 +1233,72 @@ export default function App() {
                             },
                           }}
                         >
-                          <Popup>
-                            <div style={{ minWidth: 240, maxWidth: 340, lineHeight: 1.6 }}>
-                              <div style={{ fontWeight: 700 }}>{p.name}</div>
-                              {p.address ? <div style={{ opacity: 0.85, marginTop: 4 }}>{p.address}</div> : null}
-                              <div style={{ marginTop: 8 }}>
-                                <strong>Rating:</strong> {p.rating == null ? "—" : `${Number(p.rating).toFixed(1)}★`}
-                                {p.price ? ` • ${priceLabel(p.price)}` : ""}
+                          <Popup maxWidth={320} minWidth={260}>
+                            <div>
+                              {p.photo ? (
+                                <img src={p.photo} alt={p.name} className="popup-photo" />
+                              ) : null}
+                              <div className="popup-body">
+                                <div className="popup-name">{p.name}</div>
+                                <div className="popup-meta">
+                                  <span className={`popup-rating ${ratingColor(p.rating)}`}>
+                                  {ratingLabel(p.rating) === "New" ? "New spot" : `${ratingLabel(p.rating)}★`}
+                                </span>
+                                  {p.price ? <span>{priceLabel(p.price)}</span> : null}
+                                  {p.neighborhood ? <span>{p.neighborhood}</span> : null}
+                                </div>
+                                {(p.cuisine || []).length > 0 ? (
+                                  <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                    {p.cuisine.slice(0, 3).map((c) => (
+                                      <span key={c} className="popup-cuisine">{c}</span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                {p.notes ? <div className="popup-notes">{p.notes}</div> : null}
+                                <div className="popup-actions">
+                                  <a
+                                    href={mapsLink(p)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="popup-btn popup-btn-primary"
+                                  >
+                                    Open in Maps
+                                  </a>
+                                  {p.website ? (
+                                    <a
+                                      href={p.website}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="popup-btn popup-btn-secondary"
+                                    >
+                                      Website
+                                    </a>
+                                  ) : null}
+                                </div>
                               </div>
-                              {p.notes ? <div style={{ marginTop: 8, opacity: 0.9 }}>{p.notes}</div> : null}
                             </div>
                           </Popup>
                         </Marker>
-                      ))}
-                  </MarkerClusterGroup>
+                    ))}
                 </MapContainer>
+
+                {/* Floating filter pills */}
+                {activeFilters.length > 0 ? (
+                  <div className="pointer-events-none absolute top-3 left-14 z-[500]">
+                    <div className="pointer-events-auto flex flex-wrap gap-1.5">
+                      {activeFilters.map((f) => (
+                        <button key={f.key} type="button" onClick={f.clear} className="filter-pill">
+                          {f.label}
+                          <span className="pill-x">✕</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+
+
+
               </div>
             </div>
           </div>
@@ -1117,7 +1308,7 @@ export default function App() {
       {/* Account Modal */}
       {accountOpen ? (
         <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 text-neutral-100"
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 text-[#1F2A2E]"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setAccountOpen(false);
           }}
@@ -1126,19 +1317,19 @@ export default function App() {
           aria-label="Account modal"
         >
           {/* ✅ backdrop no longer steals clicks (fixes click-outside-to-close) */}
-          <div className="pointer-events-none absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="pointer-events-none absolute inset-0 bg-[#0D0906]/80 backdrop-blur-sm" />
 
-          <div className="relative w-[92vw] max-w-4xl rounded-3xl border border-white/10 bg-neutral-950/90 shadow-2xl">
+          <div className="relative w-[92vw] max-w-4xl rounded-3xl border border-[#165D6E]/20 bg-[#F7F5EF]/95 shadow-2xl">
             <div className="flex max-h-[80vh] min-h-[420px] flex-col overflow-hidden md:min-h-[560px]">
               {/* ✅ Subtle header surface (replaces “Windows 95” divider) */}
               <div className="bg-white/3 p-8">
                 <div className="flex items-start justify-between gap-6">
                   {/* ✅ Hero name + stepped subtitle */}
                   <div className="min-w-0">
-                    <div className="text-4xl font-bold tracking-tight leading-none text-[#F2E9D9] md:text-5xl">
+                    <div className="text-4xl font-bold tracking-tight leading-none text-[#1F2A2E] md:text-5xl">
                       Aleks
                     </div>
-                    <div className="mt-2 text-sm font-normal tracking-wide text-[rgba(242,233,217,0.75)] md:text-base">
+                    <div className="mt-2 text-sm font-normal tracking-wide text-[rgba(31,42,46,0.75)] md:text-base">
                       CS • frontend/UX • building fun products
                     </div>
                   </div>
@@ -1150,10 +1341,10 @@ export default function App() {
                     className={[
                       "grid h-11 w-11 shrink-0 place-items-center rounded-full",
                       "border border-transparent bg-transparent",
-                      "text-lg text-[rgba(242,233,217,0.72)]",
+                      "text-lg text-[rgba(31,42,46,0.72)]",
                       "transition-colors duration-150",
-                      "hover:bg-[rgba(242,233,217,0.06)] hover:border-[rgba(242,233,217,0.14)] hover:text-[#F2E9D9]",
-                      "focus:outline-none focus:ring-2 focus:ring-[rgba(212,194,161,0.35)]",
+                      "hover:bg-[rgba(31,42,46,0.06)] hover:border-[rgba(31,42,46,0.14)] hover:text-[#1F2A2E]",
+                      "focus:outline-none focus:ring-2 focus:ring-[rgba(22,93,110,0.35)]",
                     ].join(" ")}
                     aria-label="Close"
                     title="Close"
@@ -1185,13 +1376,13 @@ export default function App() {
               </div>
 
               {/* ✅ Soft gradient divider between tabs + content */}
-              <div className="h-px w-full bg-gradient-to-r from-transparent via-[rgba(212,194,161,0.55)] to-transparent opacity-100" />
+              <div className="h-px w-full bg-gradient-to-r from-transparent via-[rgba(22,93,110,0.55)] to-transparent opacity-100" />
 
               <div className="flex-1 overflow-y-auto px-8 pb-12 pt-6">
                 {accountTab === "about" ? (
                   <div className="text-lg md:text-xl">
-                    <div className="max-w-[70ch] leading-[1.75] text-[rgba(242,233,217,0.88)]">
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(242,233,217,0.55)]">About</div>
+                    <div className="max-w-[70ch] leading-[1.75] text-[rgba(31,42,46,0.88)]">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(31,42,46,0.55)]">About</div>
 
                       {/* ✅ Short intro (2–3 lines) */}
                       <p className="mt-4">
@@ -1205,7 +1396,7 @@ export default function App() {
                 {accountTab === "resume" ? (
                   <div className="space-y-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(242,233,217,0.55)]">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(31,42,46,0.55)]">
                         Resume
                       </div>
 
@@ -1214,7 +1405,7 @@ export default function App() {
                           href={RESUME_URL}
                           target="_blank"
                           rel="noreferrer"
-                          className="min-h-[44px] rounded-full border-2 border-[rgba(212,194,161,0.92)] bg-[rgba(212,194,161,0.14)] px-4 py-2 text-sm font-medium text-[#F2E9D9] transition-colors hover:bg-[rgba(212,194,161,0.20)]"
+                          className="min-h-[44px] rounded-full border-2 border-[rgba(22,93,110,0.92)] bg-[rgba(22,93,110,0.14)] px-4 py-2 text-sm font-medium text-[#1F2A2E] transition-colors hover:bg-[rgba(22,93,110,0.20)]"
                         >
                           Open Full Resume
                         </a>
@@ -1222,7 +1413,7 @@ export default function App() {
                         <a
                           href={RESUME_URL}
                           download
-                          className="min-h-[44px] rounded-full border-2 border-[rgba(242,233,217,0.16)] bg-[rgba(242,233,217,0.06)] px-4 py-2 text-sm font-medium text-[rgba(242,233,217,0.82)] transition-colors hover:bg-[rgba(242,233,217,0.10)] hover:border-[rgba(242,233,217,0.26)]"
+                          className="min-h-[44px] rounded-full border-2 border-[rgba(31,42,46,0.16)] bg-[rgba(31,42,46,0.06)] px-4 py-2 text-sm font-medium text-[rgba(31,42,46,0.82)] transition-colors hover:bg-[rgba(31,42,46,0.10)] hover:border-[rgba(31,42,46,0.26)]"
                         >
                           Download
                         </a>
@@ -1244,8 +1435,8 @@ export default function App() {
 
                 {accountTab === "contact" ? (
                   <div className="space-y-4 text-base md:text-lg">
-                    <div className="rounded-2xl border border-neutral-800 bg-neutral-950/40 p-5">
-                      <div className="text-sm text-neutral-400 md:text-base">Contact</div>
+                    <div className="rounded-2xl border border-[#E0DCD4] bg-[#F7F5EF]/40 p-5">
+                      <div className="text-sm text-[#8A9A9E] md:text-base">Contact</div>
 
                       <div className="mt-4 space-y-2">
                         <ContactRow
@@ -1280,7 +1471,7 @@ export default function App() {
                         />
                       </div>
 
-                      <div className="mt-3 text-xs text-neutral-500">
+                      <div className="mt-3 text-xs text-[#B0BAB8]">
                         Tip: click the copy icon next to email to paste it anywhere.
                       </div>
                     </div>
@@ -1295,7 +1486,7 @@ export default function App() {
       {/* Menu Modal (Hamburger) */}
       {menuOpen ? (
         <div
-          className="fixed inset-0 z-[999] flex items-start justify-end p-4 md:p-6 text-neutral-100"
+          className="fixed inset-0 z-[999] flex items-start justify-end p-4 md:p-6 text-[#1F2A2E]"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setMenuOpen(false);
           }}
@@ -1304,9 +1495,9 @@ export default function App() {
           aria-label="Menu modal"
         >
           {/* ✅ backdrop no longer steals clicks */}
-          <div className="pointer-events-none absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="pointer-events-none absolute inset-0 bg-[#0D0906]/80 backdrop-blur-sm" />
 
-          <div className="relative w-[92vw] max-w-xl rounded-3xl border border-white/10 bg-neutral-950/90 shadow-2xl">
+          <div className="relative w-[92vw] max-w-xl rounded-3xl border border-[#165D6E]/20 bg-[#F7F5EF]/95 shadow-2xl">
             <div className="flex max-h-[80vh] min-h-[360px] flex-col overflow-hidden md:min-h-[420px]">
               {/* ✅ Header surface + consistent alignment */}
               <div className="bg-white/3 p-5 md:p-6">
@@ -1315,7 +1506,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setMenuOpen(false)}
-                    className="grid h-12 w-12 place-items-center rounded-xl border border-white/10 bg-white/5 text-lg text-white/70 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/25"
+                    className="grid h-12 w-12 place-items-center rounded-xl border border-[#165D6E]/20 bg-[#F1EEE6] text-lg text-[#5A6B6E] hover:bg-[#E0DCD4] hover:text-[#1F2A2E] focus:outline-none focus:ring-2 focus:ring-[#165D6E]/25"
                     aria-label="Close"
                     title="Close"
                   >
@@ -1323,7 +1514,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="mt-2 text-sm font-medium text-neutral-200 md:text-base">
+                <div className="mt-2 text-sm font-medium text-[#2A3A3E] md:text-base">
                   About • Featured • Stats
                 </div>
 
@@ -1352,12 +1543,12 @@ export default function App() {
               {/* ✅ No “Windows 95” divider — whitespace + readable line length */}
               <div className="flex-1 overflow-y-auto px-5 pb-8 pt-2 md:px-6 md:pb-10 md:pt-2">
                 {menuTab === "aboutMap" ? (
-                  <div className="space-y-3 text-sm text-neutral-300">
+                  <div className="space-y-3 text-sm text-[#5A6B6E]">
                     <p className="max-w-[640px] leading-relaxed">
                       This is my personal food map. Use the left filters to explore by city, neighborhood, cuisine,
                       tags, and rating.
                     </p>
-                    <p className="max-w-[640px] leading-relaxed text-neutral-400">
+                    <p className="max-w-[640px] leading-relaxed text-[#8A9A9E]">
                       Tip: click a card to fly to the pin. Use “Copy link” to share the current view.
                     </p>
 
@@ -1365,19 +1556,19 @@ export default function App() {
                       <button
                         type="button"
                         onClick={exportPlaces}
-                        className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                        className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-4 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                       >
                         Export JSON
                       </button>
                       <button
                         type="button"
                         onClick={clearLocalEdits}
-                        className="min-h-[44px] rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                        className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-4 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                       >
                         Reset edits
                       </button>
                     </div>
-                    <p className="text-[11px] text-neutral-500">
+                    <p className="text-[11px] text-[#B0BAB8]">
                       Quick-edits save in this browser. Export JSON to make them permanent in your repo.
                     </p>
                   </div>
@@ -1396,7 +1587,7 @@ export default function App() {
                         key={key}
                         type="button"
                         onClick={() => applyFeatured(key)}
-                        className="min-h-[44px] w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-900"
+                        className="min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-4 py-2 text-left text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                       >
                         {label}
                       </button>
@@ -1405,42 +1596,42 @@ export default function App() {
                 ) : null}
 
                 {menuTab === "stats" ? (
-                  <div className="space-y-3 text-sm text-neutral-300">
+                  <div className="space-y-3 text-sm text-[#5A6B6E]">
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
-                        <div className="text-neutral-400">Total spots</div>
+                      <div className="rounded-xl border border-[#E0DCD4] bg-[#F7F5EF]/50 p-3">
+                        <div className="text-[#8A9A9E]">Total spots</div>
                         <div className="mt-1 text-lg font-semibold">{stats.total}</div>
                       </div>
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
-                        <div className="text-neutral-400">Avg rating</div>
+                      <div className="rounded-xl border border-[#E0DCD4] bg-[#F7F5EF]/50 p-3">
+                        <div className="text-[#8A9A9E]">Avg rating</div>
                         <div className="mt-1 text-lg font-semibold">
                           {stats.avgRating == null ? "—" : stats.avgRating.toFixed(2)}
                         </div>
                       </div>
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
-                        <div className="text-neutral-400">Would return</div>
+                      <div className="rounded-xl border border-[#E0DCD4] bg-[#F7F5EF]/50 p-3">
+                        <div className="text-[#8A9A9E]">Would return</div>
                         <div className="mt-1 text-lg font-semibold">{stats.wouldReturnPct}%</div>
                       </div>
-                      <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
-                        <div className="text-neutral-400">Rated</div>
+                      <div className="rounded-xl border border-[#E0DCD4] bg-[#F7F5EF]/50 p-3">
+                        <div className="text-[#8A9A9E]">Rated</div>
                         <div className="mt-1 text-lg font-semibold">{stats.ratedCount}</div>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
-                      <div className="text-neutral-400">Top cuisines</div>
+                    <div className="rounded-xl border border-[#E0DCD4] bg-[#F7F5EF]/50 p-3">
+                      <div className="text-[#8A9A9E]">Top cuisines</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {stats.topCuisines.length ? (
                           stats.topCuisines.map(([c, n]) => (
                             <span
                               key={c}
-                              className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-[12px] text-neutral-300"
+                              className="rounded-full border border-[#E0DCD4] bg-[#F1EEE6] px-2 py-1 text-[12px] text-[#5A6B6E]"
                             >
                               {c} • {n}
                             </span>
                           ))
                         ) : (
-                          <span className="text-neutral-500">No cuisine data yet.</span>
+                          <span className="text-[#B0BAB8]">No cuisine data yet.</span>
                         )}
                       </div>
                     </div>
