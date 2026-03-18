@@ -1,6 +1,6 @@
 // App.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, CircleMarker } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 
@@ -9,6 +9,7 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
 import placesData from "./data/Places.json";
+import Steak from "./assets/Steak.PNG";
 
 // Leaflet marker icon fix (Vite) — kept as fallback
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -20,6 +21,14 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
+});
+
+const yorkieUserIcon = L.icon({
+  iconUrl: Steak,
+  iconSize: [32, 32],
+  iconAnchor: [14, 24],
+  popupAnchor: [0, -20],
+  className: "yorkie-user-icon",
 });
 
 // ── Continuous rating → color (red→orange→yellow→green) ──
@@ -152,6 +161,77 @@ function createClusterIcon(cluster) {
 // Bounds
 const AREA_BOUNDS = L.latLngBounds([47.45, -122.48], [48.02, -122.0]);
 
+// ── Region filter chips (two-tier) ──
+const REGIONS = [
+  { key: "all", label: "All Spots" },
+  { key: "seattle", label: "Seattle" },
+  { key: "bellevue", label: "Bellevue" },
+  { key: "lynnwood", label: "Lynnwood" },
+  { key: "redmond", label: "Redmond" },
+  { key: "kirkland", label: "Kirkland" },
+  { key: "south-end", label: "South End" },
+  { key: "edmonds", label: "Edmonds" },
+  { key: "shoreline", label: "Shoreline" },
+  { key: "ballard", label: "Ballard" },
+  { key: "everett", label: "Everett" },
+];
+
+const SEATTLE_HOODS = [
+  { key: "all-seattle", label: "All Seattle" },
+  { key: "u-district", label: "U District" },
+  { key: "fremont", label: "Fremont" },
+  { key: "capitol-hill", label: "Capitol Hill" },
+  { key: "downtown", label: "Downtown" },
+  { key: "slu", label: "South Lake Union" },
+  { key: "queen-anne", label: "Queen Anne" },
+  { key: "west-seattle", label: "West Seattle" },
+  { key: "green-lake", label: "Green Lake" },
+  { key: "roosevelt", label: "Roosevelt" },
+  { key: "eastlake", label: "Eastlake" },
+];
+
+function regionMatchesPlace(place, regionKey, subRegionKey) {
+  const city = (place.city || "").toLowerCase();
+  const hood = (place.neighborhood || "").toLowerCase();
+  const addr = (place.address || "").toLowerCase();
+
+  // Top-level region filter
+  if (regionKey === "all") return true;
+
+  if (regionKey === "seattle") {
+    const isSeattle = city === "seattle" || (!city && addr.includes("seattle"));
+    if (!isSeattle) return false;
+    // Sub-region filter
+    if (!subRegionKey || subRegionKey === "all-seattle") return true;
+    switch (subRegionKey) {
+      case "u-district":      return hood === "university district" || hood === "u district";
+      case "fremont":         return hood === "fremont";
+      case "capitol-hill":    return hood === "capitol hill";
+      case "downtown":        return hood === "downtown";
+      case "slu":             return hood === "south lake union";
+      case "queen-anne":      return hood === "queen anne";
+      case "west-seattle":    return hood === "west seattle";
+      case "green-lake":      return hood === "green lake";
+      case "roosevelt":       return hood === "roosevelt";
+      case "eastlake":        return hood === "eastlake";
+      default: return true;
+    }
+  }
+
+  switch (regionKey) {
+    case "bellevue":    return city === "bellevue";
+    case "lynnwood":    return city === "lynnwood";
+    case "redmond":     return city === "redmond";
+    case "kirkland":    return city === "kirkland";
+    case "south-end":   return ["tacoma", "renton", "tukwila", "kent", "federal way", "auburn"].includes(city);
+    case "edmonds":     return city === "edmonds";
+    case "shoreline":   return city === "shoreline";
+    case "ballard":     return hood === "ballard" && (city === "seattle" || (!city && addr.includes("seattle")));
+    case "everett":     return city === "everett";
+    default: return false;
+  }
+}
+
 const SORTS = [
   { value: "top", label: "Top rated" },
   { value: "recent", label: "Most recent" },
@@ -253,6 +333,267 @@ function markerInstance(ref) {
   return null;
 }
 
+// ── Preset region views (fixed bounds, not data-dependent) ──
+const REGION_VIEWS = {
+  // Top-level regions
+  all:            { bounds: [[47.45, -122.48], [48.02, -122.0]], zoom: 11 },
+  seattle:        { bounds: [[47.56205, -122.42736], [47.65174, -122.19253]], zoom: 13 },
+  "all-seattle":  { bounds: [[47.56205, -122.42736], [47.65174, -122.19253]], zoom: 13 },
+  bellevue:       { bounds: [[47.59985, -122.22211], [47.64469, -122.1047]], zoom: 14 },
+  lynnwood:       { bounds: [[47.77752, -122.37534], [47.86685, -122.14051]], zoom: 13 },
+  redmond:        { bounds: [[47.65608, -122.16491], [47.70087, -122.0475]], zoom: 14 },
+  kirkland:       { bounds: [[47.65481, -122.23774], [47.69959, -122.12032]], zoom: 14 },
+  "south-end":    { bounds: [[47.45003, -122.33362], [47.53992, -122.09878]], zoom: 13 },
+  edmonds:        { bounds: [[47.78917, -122.42255], [47.83385, -122.30513]], zoom: 14 },
+  shoreline:      { bounds: [[47.69498, -122.43096], [47.78444, -122.19613]], zoom: 13 },
+  ballard:        { bounds: [[47.65573, -122.4271], [47.70052, -122.30968]], zoom: 14 },
+  everett:        { bounds: [[47.90334, -122.31351], [47.99245, -122.07868]], zoom: 13 },
+  // Seattle neighborhoods
+  "u-district":   { bounds: [[47.652, -122.325], [47.672, -122.295]], zoom: 15 },
+  "fremont":      { bounds: [[47.647, -122.365], [47.667, -122.340]], zoom: 15 },
+  "capitol-hill": { bounds: [[47.608, -122.330], [47.636, -122.300]], zoom: 15 },
+  "downtown":     { bounds: [[47.596, -122.350], [47.618, -122.322]], zoom: 15 },
+  "slu":          { bounds: [[47.618, -122.348], [47.636, -122.328]], zoom: 15 },
+  "queen-anne":   { bounds: [[47.620, -122.375], [47.650, -122.340]], zoom: 14 },
+  "west-seattle": { bounds: [[47.520, -122.410], [47.580, -122.350]], zoom: 13 },
+  "green-lake":   { bounds: [[47.668, -122.360], [47.688, -122.325]], zoom: 15 },
+  "roosevelt":    { bounds: [[47.672, -122.325], [47.688, -122.306]], zoom: 15 },
+  "eastlake":     { bounds: [[47.628, -122.338], [47.648, -122.318]], zoom: 15 },
+};
+
+// ── Region map controller (uses preset bounds, falls back for Near Me) ──
+function RegionController({ regionKey, subRegionKey, nearMeActive, userLoc, places }) {
+  const map = useMap();
+  const prevKey = useRef("");
+
+  useEffect(() => {
+    // Near Me: dynamic fit to user + nearby places
+    if (nearMeActive && userLoc) {
+      const nk = `nearme:${userLoc.lat}:${userLoc.lon}`;
+      if (prevKey.current === nk) return;
+      prevKey.current = nk;
+
+      const coords = places
+        .filter((p) => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon)))
+        .map((p) => [Number(p.lat), Number(p.lon)]);
+      coords.push([userLoc.lat, userLoc.lon]);
+
+      if (coords.length === 1) {
+        map.flyTo(coords[0], 14, { duration: 0.55 });
+      } else {
+        const bounds = L.latLngBounds(coords);
+        if (bounds.isValid()) {
+          map.flyToBounds(bounds.pad(0.1), {
+            duration: 0.55,
+            maxZoom: 15,
+            paddingTopLeft: [20, 120],
+            paddingBottomRight: [20, 20],
+          });
+        }
+      }
+      return;
+    }
+
+    const key =
+      regionKey === "seattle" ? subRegionKey || "all-seattle" : regionKey;
+
+    if (prevKey.current === key) return;
+    prevKey.current = key;
+
+    const preset =
+      REGION_VIEWS[key] ||
+      REGION_VIEWS[regionKey] ||
+      REGION_VIEWS.all;
+
+    if (!preset?.bounds) return;
+
+    map.flyToBounds(preset.bounds, {
+      duration: 0.55,
+      paddingTopLeft: [20, 120],
+      paddingBottomRight: [20, 20],
+      maxZoom: preset.zoom ?? 18,
+    });
+  }, [map, regionKey, subRegionKey, nearMeActive, userLoc, places]);
+
+  return null;
+}
+
+function MapNearMeButton({ active, onClick }) {
+  return (
+    <div
+      className="pointer-events-none absolute left-3 z-[725]"
+      style={{ top: "calc(var(--map-controls-top, 72px) + 100px)" }}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={active ? "Turn off Near Me" : "Use my location"}
+        title={active ? "Turn off Near Me" : "Use my location"}
+        className={[
+          "pointer-events-auto relative grid h-11 w-11 place-items-center rounded-full border transition-all duration-150",
+          "backdrop-blur-md shadow-[0_8px_20px_rgba(0,0,0,0.10)]",
+          "focus:outline-none focus:ring-2 focus:ring-[rgba(22,93,110,0.28)]",
+          active
+            ? "border-[#165D6E]/80 bg-[#165D6E] text-white shadow-[0_10px_24px_rgba(22,93,110,0.25)]"
+            : "border-[rgba(22,93,110,0.18)] bg-[rgba(247,245,239,0.92)] text-[#165D6E] hover:bg-[rgba(241,238,230,0.96)] hover:border-[rgba(22,93,110,0.30)]",
+        ].join(" ")}
+      >
+        {active ? (
+          <span className="absolute inset-0 rounded-full ring-4 ring-[#165D6E]/15" />
+        ) : null}
+
+        <svg
+          viewBox="0 0 24 24"
+          className="relative h-[18px] w-[18px] -rotate-[8deg]"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M12 3L19 20L12 16.9L5 20L12 3Z" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function MapToolbar({
+  activeRegion,
+  activeSubRegion,
+  handleSelectRegion,
+  handleSelectSeattleSubregion,
+}) {
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-4 z-[700] -translate-x-1/2">
+      <div className="pointer-events-auto inline-flex max-w-[calc(100vw-160px)] flex-col rounded-[22px] border border-[rgba(255,255,255,0.42)] bg-[rgba(255,255,255,0.52)] px-3 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.10)] backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(255,255,255,0.42)]">
+        <div
+          className="overflow-x-auto [scrollbar-width:none]"
+          style={{ scrollbarWidth: "none" }}
+        >
+          <div className="flex w-max items-center gap-2 mx-auto">
+            {REGIONS.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => handleSelectRegion(r.key)}
+                className={[
+                  "shrink-0 min-h-[40px] rounded-full px-4 py-2 text-[14px] font-medium leading-none transition-all duration-150",
+                  activeRegion === r.key
+                    ? "border border-[#165D6E]/10 bg-[#165D6E] text-white shadow-[0_2px_8px_rgba(22,93,110,0.18)]"
+                    : "border border-[rgba(0,0,0,0.06)] bg-[rgba(255,255,255,0.42)] text-[#5A6B6E] hover:bg-[rgba(255,255,255,0.58)] hover:text-[#1F2A2E]",
+                ].join(" ")}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {activeRegion === "seattle" ? (
+          <div
+            className="mt-2 overflow-x-auto [scrollbar-width:none]"
+            style={{ scrollbarWidth: "none" }}
+          >
+            <div className="flex w-max items-center gap-1.5 mx-auto">
+              {SEATTLE_HOODS.map((h) => (
+                <button
+                  key={h.key}
+                  type="button"
+                  onClick={() => handleSelectSeattleSubregion(h.key)}
+                  className={[
+                    "shrink-0 min-h-[34px] rounded-full px-3.5 py-1.5 text-[12px] font-medium leading-none transition-all duration-150",
+                    activeSubRegion === h.key
+                      ? "border border-[#2E7682]/10 bg-[#2E7682] text-white shadow-[0_2px_8px_rgba(46,118,130,0.18)]"
+                      : "border border-[rgba(0,0,0,0.05)] bg-[rgba(255,255,255,0.34)] text-[#7A888C] hover:bg-[rgba(255,255,255,0.50)] hover:text-[#5A6B6E]",
+                  ].join(" ")}
+                >
+                  {h.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MapControlPill({ active, onLocateClick, topOffset = 72 }) {
+  const map = useMap();
+
+  return (
+    <div
+      className="pointer-events-none absolute left-3 z-[725]"
+      style={{ top: `${topOffset}px` }}
+    >
+      <div
+        className="
+          pointer-events-auto
+          flex flex-col overflow-hidden
+          rounded-[24px]
+          border border-[rgba(255,255,255,0.42)]
+          bg-[rgba(255,255,255,0.52)]
+          backdrop-blur-xl
+          shadow-[0_8px_24px_rgba(0,0,0,0.10)]
+          supports-[backdrop-filter]:bg-[rgba(255,255,255,0.42)]
+        "
+      >
+        <button
+          type="button"
+          onClick={() => map.zoomIn()}
+          aria-label="Zoom in"
+          title="Zoom in"
+          className="
+            grid h-12 w-12 place-items-center
+            text-[28px] leading-none text-[#165D6E]
+            transition-colors hover:bg-[rgba(255,255,255,0.22)]
+          "
+        >
+          +
+        </button>
+
+        <div className="mx-2 h-px bg-[rgba(0,0,0,0.06)]" />
+
+        <button
+          type="button"
+          onClick={() => map.zoomOut()}
+          aria-label="Zoom out"
+          title="Zoom out"
+          className="
+            grid h-12 w-12 place-items-center
+            text-[30px] leading-none text-[#165D6E]
+            transition-colors hover:bg-[rgba(255,255,255,0.22)]
+          "
+        >
+          −
+        </button>
+
+        <div className="mx-2 h-px bg-[rgba(0,0,0,0.06)]" />
+
+        <button
+          type="button"
+          onClick={onLocateClick}
+          aria-label={active ? "Turn off Near Me" : "Use my location"}
+          title={active ? "Turn off Near Me" : "Use my location"}
+          className={[
+            "relative grid h-12 w-12 place-items-center transition-colors",
+            active
+              ? "bg-[rgba(255,255,255,0.18)] text-[#1E88E5]"
+              : "text-[#1E88E5] hover:bg-[rgba(255,255,255,0.22)]",
+          ].join(" ")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="relative z-[1] h-[23px] w-[23px] -rotate-[8deg]"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M12 3L19 20L12 16.9L5 20L12 3Z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const STADIA_KEY = import.meta.env.VITE_STADIA_KEY;
   const TILE_URL = STADIA_KEY
@@ -278,6 +619,14 @@ export default function App() {
 
   // Selection
   const [selectedId, setSelectedId] = useState(null);
+
+  // Region chips (two-tier)
+  const [activeRegion, setActiveRegion] = useState("all");
+  const [activeSubRegion, setActiveSubRegion] = useState("all-seattle");
+
+  // Near Me mode
+  const [nearMeActive, setNearMeActive] = useState(false);
+  const [nearMeRadius, setNearMeRadius] = useState(5); // miles
 
   // Overlay/drawer state
   const [accountOpen, setAccountOpen] = useState(false);
@@ -616,6 +965,21 @@ export default function App() {
     return arr;
   }, [filtered, sort, myLoc]);
 
+  // Region-filtered places
+  const regionFiltered = useMemo(() => {
+    let list = sorted;
+    if (activeRegion !== "all") {
+      list = list.filter((p) => regionMatchesPlace(p, activeRegion, activeRegion === "seattle" ? activeSubRegion : null));
+    }
+    if (nearMeActive && myLoc) {
+      list = list.filter((p) => {
+        if (!Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lon))) return false;
+        return haversineMiles(myLoc.lat, myLoc.lon, Number(p.lat), Number(p.lon)) <= nearMeRadius;
+      });
+    }
+    return list;
+  }, [sorted, activeRegion, activeSubRegion, nearMeActive, myLoc, nearMeRadius]);
+
   // Active filter pills for map overlay
   const activeFilters = useMemo(() => {
     const pills = [];
@@ -663,6 +1027,55 @@ export default function App() {
       },
       (err) => {
         setLocErr(err.message || "Could not get location.");
+        showToast(err.message || "Could not get location.", "error");
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
+
+  function handleSelectRegion(regionKey) {
+    setNearMeActive(false);
+    setActiveRegion(regionKey);
+    if (regionKey !== "seattle") setActiveSubRegion("all-seattle");
+  }
+
+  function handleSelectSeattleSubregion(subKey) {
+    setNearMeActive(false);
+    setActiveRegion("seattle");
+    setActiveSubRegion(subKey);
+  }
+
+  function resetMapView() {
+    setNearMeActive(false);
+    setActiveRegion("all");
+    setActiveSubRegion("all-seattle");
+  }
+
+  function toggleNearMe() {
+    if (nearMeActive) {
+      setNearMeActive(false);
+      return;
+    }
+
+    setLocErr("");
+    if (!navigator.geolocation) {
+      showToast("Geolocation not supported.", "error");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setMyLoc(loc);
+
+        // Near Me should behave like a standalone mode
+        setActiveRegion("all");
+        setActiveSubRegion("all-seattle");
+        setNearMeActive(true);
+
+        showToast(`Showing spots within ${nearMeRadius} mi`, "success");
+      },
+      (err) => {
         showToast(err.message || "Could not get location.", "error");
       },
       { enableHighAccuracy: true, timeout: 8000 }
@@ -996,12 +1409,12 @@ export default function App() {
 
               {/* Results count */}
               <div className="mt-4 text-xs text-[#B0BAB8]">
-                {sorted.length} / {places.length} spots
+                {regionFiltered.length} / {places.length} spots
               </div>
 
               {/* Cards */}
               <div className="mt-3 space-y-2">
-                {sorted.map((p) => {
+                {regionFiltered.map((p) => {
                   const dist =
                     sort === "nearest" &&
                     myLoc &&
@@ -1187,12 +1600,23 @@ export default function App() {
 
             {/* Map */}
             <div className="rounded-2xl border border-[#E0DCD4] bg-[#F1EEE6]/35 p-5">
-              <div className="text-sm text-[#8A9A9E]">Map</div>
+              <div
+                className="relative mt-2 overflow-hidden rounded-2xl border border-[#E0DCD4]"
+                style={{
+                  "--map-controls-top": activeRegion === "seattle" ? "108px" : "72px",
+                }}
+              >
+                <MapToolbar
+                  activeRegion={activeRegion}
+                  activeSubRegion={activeSubRegion}
+                  handleSelectRegion={handleSelectRegion}
+                  handleSelectSeattleSubregion={handleSelectSeattleSubregion}
+                />
 
-              <div className="relative mt-3 overflow-hidden rounded-2xl border border-[#E0DCD4]">
                 <MapContainer
                   center={[47.6062, -122.3321]}
                   zoom={11}
+                  zoomControl={false}
                   style={{ height: "72vh", minHeight: 620, width: "100%" }}
                   maxBounds={AREA_BOUNDS}
                   maxBoundsViscosity={1.0}
@@ -1211,8 +1635,33 @@ export default function App() {
                 >
                   <TileLayer url={TILE_URL} maxZoom={20} attribution="&copy; OpenStreetMap contributors" />
 
+                  <MapControlPill
+                    active={nearMeActive}
+                    onLocateClick={toggleNearMe}
+                    topOffset={activeRegion === "seattle" ? 108 : 72}
+                  />
+
+                  <RegionController
+                    regionKey={activeRegion}
+                    subRegionKey={activeSubRegion}
+                    nearMeActive={nearMeActive}
+                    userLoc={nearMeActive ? myLoc : null}
+                    places={regionFiltered}
+                  />
+
+                  {/* User location marker */}
+                  {nearMeActive && myLoc ? (
+                    <Marker
+                      position={[myLoc.lat, myLoc.lon]}
+                      icon={yorkieUserIcon}
+                      zIndexOffset={1000}
+                    >
+                      <Popup>You are here 🐶</Popup>
+                    </Marker>
+                  ) : null}
+
                   {placesWithCoords
-                    .filter((p) => sorted.some((s) => s.id === p.id))
+                    .filter((p) => regionFiltered.some((s) => s.id === p.id))
                     .map((p) => (
                         <Marker
                           key={p.id}
@@ -1284,7 +1733,7 @@ export default function App() {
 
                 {/* Floating filter pills */}
                 {activeFilters.length > 0 ? (
-                  <div className="pointer-events-none absolute top-3 left-14 z-[500]">
+                  <div className="pointer-events-none absolute bottom-4 left-4 z-[500]">
                     <div className="pointer-events-auto flex flex-wrap gap-1.5">
                       {activeFilters.map((f) => (
                         <button key={f.key} type="button" onClick={f.clear} className="filter-pill">
@@ -1321,7 +1770,7 @@ export default function App() {
 
           <div className="relative w-[92vw] max-w-4xl rounded-3xl border border-[#165D6E]/20 bg-[#F7F5EF]/95 shadow-2xl">
             <div className="flex max-h-[80vh] min-h-[420px] flex-col overflow-hidden md:min-h-[560px]">
-              {/* ✅ Subtle header surface (replaces “Windows 95” divider) */}
+              {/* ✅ Subtle header surface (replaces "Windows 95" divider) */}
               <div className="bg-white/3 p-8">
                 <div className="flex items-start justify-between gap-6">
                   {/* ✅ Hero name + stepped subtitle */}
@@ -1386,7 +1835,7 @@ export default function App() {
 
                       {/* ✅ Short intro (2–3 lines) */}
                       <p className="mt-4">
-                        Hello, I’m Aleksey (Aleks). I’m Belarusian-born and raised in Seattle software developer and UW Computer Science student who loves building simple, user focused apps and web projects. A lot of my ideas come from wanting something specific and not finding a version that feels quite right, so I build my own. I’m also a huge food person, so check out my ratings and send me your favorite spots to try next.
+                        Hello, I'm Aleksey (Aleks). I'm Belarusian-born and raised in Seattle software developer and UW Computer Science student who loves building simple, user focused apps and web projects. A lot of my ideas come from wanting something specific and not finding a version that feels quite right, so I build my own. I'm also a huge food person, so check out my ratings and send me your favorite spots to try next.
                       </p>
 
                     </div>
@@ -1540,7 +1989,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ✅ No “Windows 95” divider — whitespace + readable line length */}
+              {/* ✅ No "Windows 95" divider — whitespace + readable line length */}
               <div className="flex-1 overflow-y-auto px-5 pb-8 pt-2 md:px-6 md:pb-10 md:pt-2">
                 {menuTab === "aboutMap" ? (
                   <div className="space-y-3 text-sm text-[#5A6B6E]">
@@ -1549,7 +1998,7 @@ export default function App() {
                       tags, and rating.
                     </p>
                     <p className="max-w-[640px] leading-relaxed text-[#8A9A9E]">
-                      Tip: click a card to fly to the pin. Use “Copy link” to share the current view.
+                      Tip: click a card to fly to the pin. Use "Copy link" to share the current view.
                     </p>
 
                     <div className="mt-4 grid grid-cols-2 gap-2">
