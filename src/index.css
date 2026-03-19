@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&display=swap");
 
 /* ── Beli-style clean map theme ────────────────────────────── */
 
@@ -336,4 +337,125 @@
 
 .yorkie-user-icon {
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18));
+}
+
+/* ── Brand header ─────────────────────────────────────────── */
+.brand-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.brand-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+}
+
+.brand-title-aleks {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(2.7rem, 4vw, 4.3rem);
+  color: #1F2A2E;
+}
+
+.brand-title-map {
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.35rem, 3.5vw, 3.7rem);
+  color: #1F2A2E;
+  letter-spacing: -0.055em;
+}
+
+.brand-accent {
+  margin-top: 12px;
+  width: 88px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #165D6E 0%, #2E7682 100%);
+  opacity: 0.9;
+}
+
+.brand-subtitle {
+  margin-top: 12px;
+  max-width: 700px;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: clamp(0.98rem, 1.15vw, 1.12rem);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: #7F8E92;
+}
+
+@media (max-width: 640px) {
+  .brand-title {
+    gap: 8px;
+  }
+
+  .brand-accent {
+    margin-top: 10px;
+    width: 72px;
+    height: 3px;
+  }
+
+  .brand-subtitle {
+    margin-top: 10px;
+  }
+}
+
+/* ── Filter pills on map overlay ─────────────────────────── */
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(247, 245, 239, 0.88);
+  border: 1px solid rgba(22, 93, 110, 0.2);
+  color: #165D6E;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-pill:hover {
+  background: rgba(241, 238, 230, 0.95);
+  border-color: rgba(22, 93, 110, 0.35);
+}
+.pill-x {
+  font-size: 10px;
+  opacity: 0.6;
+}
+.filter-pill:hover .pill-x {
+  opacity: 1;
+}
+
+/* ── Sidebar scrollbar ───────────────────────────────────── */
+.xl\:scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(22, 93, 110, 0.15) transparent;
+}
+.xl\:scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+}
+.xl\:scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.xl\:scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(22, 93, 110, 0.15);
+  border-radius: 999px;
+}
+.xl\:scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(22, 93, 110, 0.25);
+}
+
+/* ── Hide scrollbar (toolbar pill rows) ──────────────────── */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
 }

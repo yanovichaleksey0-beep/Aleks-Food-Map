@@ -10,6 +10,7 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
 import placesData from "./data/Places.json";
 import Steak from "./assets/Steak.PNG";
+import CaseStudyImage from "./assets/Case.png";
 
 // Leaflet marker icon fix (Vite) — kept as fallback
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -234,8 +235,9 @@ function regionMatchesPlace(place, regionKey, subRegionKey) {
 
 const SORTS = [
   { value: "top", label: "Top rated" },
-  { value: "recent", label: "Most recent" },
-  { value: "name", label: "Name (A→Z)" },
+  { value: "lowest", label: "Lowest rated" },
+  { value: "recent", label: "Newest added" },
+  { value: "name", label: "A–Z" },
   { value: "nearest", label: "Nearest to me" },
 ];
 
@@ -266,27 +268,20 @@ function mapsLink(place) {
 function parseUrlState() {
   const sp = new URLSearchParams(window.location.search);
   const q = sp.get("q") ?? "";
-  const city = sp.get("city") ?? "";
-  const cuisine = sp.get("cuisine") ?? "";
-  const neighborhood = sp.get("hood") ?? "";
-  const tag = sp.get("tag") ?? "";
+  const locationQ = sp.get("loc") ?? "";
+  const pricesRaw = sp.get("prices") ?? "";
+  const prices = pricesRaw ? pricesRaw.split(",").map(Number).filter((n) => n >= 1 && n <= 4) : [];
   const minRating = Number(sp.get("minRating") ?? "0");
-  const price = Number(sp.get("price") ?? "0");
-  const wouldReturn = sp.get("return") === "1";
   const sort = sp.get("sort") ?? "top";
-  return { q, city, cuisine, neighborhood, tag, minRating, price, wouldReturn, sort };
+  return { q, locationQ, prices, minRating, sort };
 }
 
 function writeUrlState(state) {
   const sp = new URLSearchParams();
   if (state.q) sp.set("q", state.q);
-  if (state.city) sp.set("city", state.city);
-  if (state.cuisine) sp.set("cuisine", state.cuisine);
-  if (state.neighborhood) sp.set("hood", state.neighborhood);
-  if (state.tag) sp.set("tag", state.tag);
+  if (state.locationQ) sp.set("loc", state.locationQ);
+  if (state.prices?.length) sp.set("prices", state.prices.join(","));
   if (state.minRating > 0) sp.set("minRating", String(state.minRating));
-  if (state.price > 0) sp.set("price", String(state.price));
-  if (state.wouldReturn) sp.set("return", "1");
   if (state.sort && state.sort !== "top") sp.set("sort", state.sort);
 
   const next = `${window.location.pathname}${sp.toString() ? `?${sp.toString()}` : ""}`;
@@ -462,23 +457,23 @@ function MapToolbar({
   handleSelectSeattleSubregion,
 }) {
   return (
-    <div className="pointer-events-none absolute left-1/2 top-4 z-[700] -translate-x-1/2">
-      <div className="pointer-events-auto inline-flex max-w-[calc(100vw-160px)] flex-col rounded-[22px] border border-[rgba(255,255,255,0.42)] bg-[rgba(255,255,255,0.52)] px-3 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.10)] backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(255,255,255,0.42)]">
+    <div className="pointer-events-none absolute left-1/2 top-3 z-[700] w-[calc(100%-28px)] max-w-[980px] -translate-x-1/2">
+      <div className="pointer-events-auto flex flex-col rounded-[20px] border border-[rgba(255,255,255,0.42)] bg-[rgba(255,255,255,0.50)] px-2.5 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.10)] backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(255,255,255,0.42)]">
         <div
-          className="overflow-x-auto [scrollbar-width:none]"
-          style={{ scrollbarWidth: "none" }}
+          className="hide-scrollbar overflow-x-auto overflow-y-hidden whitespace-nowrap scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none]"
+          style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <div className="flex w-max items-center gap-2 mx-auto">
+          <div className="flex min-w-max items-center gap-1.5 pr-1">
             {REGIONS.map((r) => (
               <button
                 key={r.key}
                 type="button"
                 onClick={() => handleSelectRegion(r.key)}
                 className={[
-                  "shrink-0 min-h-[40px] rounded-full px-4 py-2 text-[14px] font-medium leading-none transition-all duration-150",
+                  "shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium leading-none transition-all duration-150",
                   activeRegion === r.key
                     ? "border border-[#165D6E]/10 bg-[#165D6E] text-white shadow-[0_2px_8px_rgba(22,93,110,0.18)]"
-                    : "border border-[rgba(0,0,0,0.06)] bg-[rgba(255,255,255,0.42)] text-[#5A6B6E] hover:bg-[rgba(255,255,255,0.58)] hover:text-[#1F2A2E]",
+                    : "border border-[rgba(0,0,0,0.06)] bg-[rgba(255,255,255,0.38)] text-[#5A6B6E] hover:bg-[rgba(255,255,255,0.56)] hover:text-[#1F2A2E]",
                 ].join(" ")}
               >
                 {r.label}
@@ -489,20 +484,20 @@ function MapToolbar({
 
         {activeRegion === "seattle" ? (
           <div
-            className="mt-2 overflow-x-auto [scrollbar-width:none]"
-            style={{ scrollbarWidth: "none" }}
+            className="hide-scrollbar mt-1.5 overflow-x-auto overflow-y-hidden whitespace-nowrap scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none]"
+            style={{ WebkitOverflowScrolling: "touch" }}
           >
-            <div className="flex w-max items-center gap-1.5 mx-auto">
+            <div className="flex min-w-max items-center gap-1.5 pr-1">
               {SEATTLE_HOODS.map((h) => (
                 <button
                   key={h.key}
                   type="button"
                   onClick={() => handleSelectSeattleSubregion(h.key)}
                   className={[
-                    "shrink-0 min-h-[34px] rounded-full px-3.5 py-1.5 text-[12px] font-medium leading-none transition-all duration-150",
+                    "shrink-0 rounded-full px-3 py-1 text-[11px] font-medium leading-none transition-all duration-150",
                     activeSubRegion === h.key
                       ? "border border-[#2E7682]/10 bg-[#2E7682] text-white shadow-[0_2px_8px_rgba(46,118,130,0.18)]"
-                      : "border border-[rgba(0,0,0,0.05)] bg-[rgba(255,255,255,0.34)] text-[#7A888C] hover:bg-[rgba(255,255,255,0.50)] hover:text-[#5A6B6E]",
+                      : "border border-[rgba(0,0,0,0.05)] bg-[rgba(255,255,255,0.32)] text-[#7A888C] hover:bg-[rgba(255,255,255,0.48)] hover:text-[#5A6B6E]",
                   ].join(" ")}
                 >
                   {h.label}
@@ -608,14 +603,16 @@ export default function App() {
   // URL-synced state
   const initial = useMemo(() => parseUrlState(), []);
   const [q, setQ] = useState(initial.q);
-  const [city, setCity] = useState(initial.city);
-  const [cuisine, setCuisine] = useState(initial.cuisine);
-  const [neighborhood, setNeighborhood] = useState(initial.neighborhood);
-  const [tag, setTag] = useState(initial.tag);
+  const [locationQ, setLocationQ] = useState(initial.locationQ);
+  const [prices, setPrices] = useState(initial.prices);
   const [minRating, setMinRating] = useState(initial.minRating);
-  const [price, setPrice] = useState(initial.price);
-  const [wouldReturn, setWouldReturn] = useState(initial.wouldReturn);
   const [sort, setSort] = useState(initial.sort);
+
+  function togglePrice(level) {
+    setPrices((prev) =>
+      prev.includes(level) ? prev.filter((p) => p !== level) : [...prev, level].sort()
+    );
+  }
 
   // Selection
   const [selectedId, setSelectedId] = useState(null);
@@ -630,7 +627,8 @@ export default function App() {
 
   // Overlay/drawer state
   const [accountOpen, setAccountOpen] = useState(false);
-  const [accountTab, setAccountTab] = useState("about"); // "about" | "resume" | "contact"
+  const [accountTab, setAccountTab] = useState("about"); // "about" | "resume" | "caseStudy" | "contact"
+  const [caseStudyFull, setCaseStudyFull] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTab, setMenuTab] = useState("aboutMap"); // "aboutMap" | "featured" | "stats"
 
@@ -747,13 +745,9 @@ export default function App() {
 
   function applyFeatured(which) {
     setMenuOpen(false);
-    setCity("");
-    setNeighborhood("");
-    setCuisine("");
-    setTag("");
-    setPrice(0);
+    setLocationQ("");
+    setPrices([]);
     setMinRating(0);
-    setWouldReturn(false);
     setQ("");
 
     if (which === "top") {
@@ -764,19 +758,19 @@ export default function App() {
     }
     if (which === "date-night") {
       setSort("top");
-      setTag("date-night");
+      setQ("date-night");
       showToast("Featured: date-night", "success");
       return;
     }
     if (which === "late-night") {
       setSort("top");
-      setTag("late-night");
+      setQ("late-night");
       showToast("Featured: late-night", "success");
       return;
     }
     if (which === "cheap") {
       setSort("top");
-      setPrice(1);
+      setPrices([1]);
       showToast("Featured: cheap eats ($)", "success");
       return;
     }
@@ -856,21 +850,17 @@ export default function App() {
 
   // Whenever filters change, write URL
   useEffect(() => {
-    writeUrlState({ q, city, cuisine, neighborhood, tag, minRating, price, wouldReturn, sort });
-  }, [q, city, cuisine, neighborhood, tag, minRating, price, wouldReturn, sort]);
+    writeUrlState({ q, locationQ, prices, minRating, sort });
+  }, [q, locationQ, prices, minRating, sort]);
 
   // Back/Forward restores state
   useEffect(() => {
     const onPop = () => {
       const s = parseUrlState();
       setQ(s.q);
-      setCity(s.city);
-      setCuisine(s.cuisine);
-      setNeighborhood(s.neighborhood);
-      setTag(s.tag);
+      setLocationQ(s.locationQ);
+      setPrices(s.prices);
       setMinRating(s.minRating);
-      setPrice(s.price);
-      setWouldReturn(s.wouldReturn);
       setSort(s.sort);
     };
     window.addEventListener("popstate", onPop);
@@ -879,13 +869,9 @@ export default function App() {
 
   function clearFilters() {
     setQ("");
-    setCity("");
-    setCuisine("");
-    setNeighborhood("");
-    setTag("");
+    setLocationQ("");
+    setPrices([]);
     setMinRating(0);
-    setPrice(0);
-    setWouldReturn(false);
     setSort("top");
     setSelectedId(null);
     showToast("Filters cleared", "info");
@@ -896,26 +882,19 @@ export default function App() {
     await copyText(url, "Link copied!");
   }
 
-  // Facets for dropdowns
-  const facets = useMemo(() => {
-    const uniq = (arr) => Array.from(new Set(arr.filter(Boolean))).sort();
-    const cities = uniq(places.map((p) => p.city));
-    const hoods = uniq(places.map((p) => p.neighborhood));
-    const cuisines = uniq(places.flatMap((p) => p.cuisine || []));
-    const tags = uniq(places.flatMap((p) => p.tags || []));
-    return { cities, hoods, cuisines, tags };
-  }, [places]);
-
   // Filtering
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
+    const lq = locationQ.trim().toLowerCase();
     return places.filter((p) => {
-      if (city && (p.city || "") !== city) return false;
-      if (neighborhood && (p.neighborhood || "") !== neighborhood) return false;
-      if (cuisine && !(p.cuisine || []).includes(cuisine)) return false;
-      if (tag && !(p.tags || []).includes(tag)) return false;
-      if (price > 0 && Number(p.price || 0) !== Number(price)) return false;
-      if (wouldReturn && p.wouldReturn !== true) return false;
+      // Location fuzzy filter
+      if (lq) {
+        const locHay = [p.city, p.neighborhood, p.address].filter(Boolean).join(" ").toLowerCase();
+        if (!locHay.includes(lq)) return false;
+      }
+
+      // Price multi-select
+      if (prices.length > 0 && !prices.includes(Number(p.price || 0))) return false;
 
       const r = typeof p.rating === "number" ? p.rating : 0;
       if (minRating > 0 && r < minRating) return false;
@@ -937,7 +916,7 @@ export default function App() {
 
       return hay.includes(qq);
     });
-  }, [places, q, city, neighborhood, cuisine, tag, minRating, price, wouldReturn]);
+  }, [places, q, locationQ, prices, minRating]);
 
   // Sorting
   const sorted = useMemo(() => {
@@ -959,6 +938,10 @@ export default function App() {
         const db = haversineMiles(myLoc.lat, myLoc.lon, Number(b.lat), Number(b.lon));
         return da - db;
       });
+      return arr;
+    }
+    if (sort === "lowest") {
+      arr.sort((a, b) => (Number(a.rating) || 0) - (Number(b.rating) || 0));
       return arr;
     }
     arr.sort((a, b) => (Number(b.rating) || -1) - (Number(a.rating) || -1));
@@ -984,15 +967,11 @@ export default function App() {
   const activeFilters = useMemo(() => {
     const pills = [];
     if (q) pills.push({ key: "q", label: `"${q}"`, clear: () => setQ("") });
-    if (city) pills.push({ key: "city", label: city, clear: () => setCity("") });
-    if (cuisine) pills.push({ key: "cuisine", label: cuisine, clear: () => setCuisine("") });
-    if (neighborhood) pills.push({ key: "hood", label: neighborhood, clear: () => setNeighborhood("") });
-    if (tag) pills.push({ key: "tag", label: `#${tag}`, clear: () => setTag("") });
-    if (price > 0) pills.push({ key: "price", label: priceLabel(price), clear: () => setPrice(0) });
+    if (locationQ) pills.push({ key: "loc", label: locationQ, clear: () => setLocationQ("") });
+    if (prices.length > 0) pills.push({ key: "prices", label: prices.map((p) => "$".repeat(p)).join(" "), clear: () => setPrices([]) });
     if (minRating > 0) pills.push({ key: "rating", label: `${minRating}+★`, clear: () => setMinRating(0) });
-    if (wouldReturn) pills.push({ key: "return", label: "Would return", clear: () => setWouldReturn(false) });
     return pills;
-  }, [q, city, cuisine, neighborhood, tag, price, minRating, wouldReturn]);
+  }, [q, locationQ, prices, minRating]);
 
   // Selected place for bottom card
   const selectedPlace = selectedId != null ? places.find(p => p.id === selectedId) : null;
@@ -1183,49 +1162,78 @@ export default function App() {
   return (
     <>
       <div className="min-h-screen bg-[#F7F5EF] text-[#1F2A2E]">
-        <div className="w-full px-5 py-8 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Aleks Food Map</h1>
-              <p className="mt-3 text-base text-[#8A9A9E] sm:text-lg">
+        <div className="w-full px-5 py-7 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+          <div className="flex items-start justify-between gap-6 md:gap-8">
+            <div className="brand-lockup">
+              <h1 className="brand-title" aria-label="Aleks Food Map">
+                <span className="brand-title-aleks">Aleks</span>
+                <span className="brand-title-map">Food Map</span>
+              </h1>
+
+              <div className="brand-accent" aria-hidden="true" />
+
+              <p className="brand-subtitle">
                 Seattle • Bellevue • and anywhere I eat something worth sharing.
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Hamburger */}
+              {/* Hamburger — slightly quieter */}
               <button
                 type="button"
                 onClick={() => {
                   setMenuOpen(true);
                   setMenuTab("aboutMap");
                 }}
-                className="min-h-[48px] rounded-full border border-[#165D6E]/30 bg-[#F1EEE6]/80 px-4 py-2 text-sm text-[#2A3A3E] backdrop-blur-sm hover:bg-[#E0DCD4] hover:border-[#165D6E]/50"
+                className="min-h-[48px] rounded-full border border-[#165D6E]/16 bg-[#F7F5EF]/72 px-4 py-2 text-sm text-[#5A6B6E] backdrop-blur-sm transition-all duration-150 hover:border-[#165D6E]/28 hover:bg-[#F1EEE6] hover:text-[#1F2A2E]"
                 aria-label="Open map menu"
                 title="Menu"
               >
                 ☰
               </button>
 
-              {/* Account */}
+              {/* About / Account — PRIMARY */}
               <button
                 type="button"
                 onClick={() => {
                   setAccountOpen(true);
                   setAccountTab("about");
                 }}
-                className="min-h-[48px] flex items-center gap-3 rounded-full border border-[#165D6E]/30 bg-[#F1EEE6]/80 px-3.5 py-2 text-sm text-[#2A3A3E] backdrop-blur-sm hover:bg-[#E0DCD4] hover:border-[#165D6E]/50"
-                aria-label="Open account"
-                title="Account"
+                className={[
+                  "group relative min-h-[54px] flex items-center gap-3 rounded-full pl-2 pr-4 py-2",
+                  "border border-[#165D6E]/40 bg-[#F7F5EF]/96 text-[#1F2A2E] backdrop-blur-sm",
+                  "ring-1 ring-[#165D6E]/8 shadow-[0_10px_24px_rgba(22,93,110,0.14)]",
+                  "transition-all duration-200",
+                  "hover:-translate-y-[1px] hover:border-[#165D6E]/58 hover:shadow-[0_14px_32px_rgba(22,93,110,0.20)]",
+                ].join(" ")}
+                aria-label="Open About Aleks"
+                title="About Aleks"
               >
-                <span className="grid h-10 w-10 place-items-center rounded-full border-2 border-[#165D6E]/60 bg-[#F1EEE6] text-sm font-bold text-[#165D6E] shadow-[0_0_8px_rgba(22,93,110,0.15)]">
+                {/* avatar */}
+                <span
+                  className={[
+                    "grid h-11 w-11 place-items-center rounded-full",
+                    "bg-[#165D6E] text-sm font-bold text-white",
+                    "shadow-[0_0_0_4px_rgba(22,93,110,0.10),0_8px_18px_rgba(22,93,110,0.24)]",
+                    "transition-transform duration-200 group-hover:scale-[1.04]",
+                  ].join(" ")}
+                >
                   A
                 </span>
-                <span className="hidden sm:block">Aleks</span>
+
+                {/* text */}
+                <span className="hidden sm:flex flex-col items-start leading-none">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A9A9E]">
+                    Profile
+                  </span>
+                  <span className="mt-1 text-[15px] font-semibold text-[#1F2A2E]">
+                    About Aleks
+                  </span>
+                </span>
               </button>
 
-              {/* Version */}
-              <div className="rounded-full border border-[#165D6E]/25 bg-[#F1EEE6]/80 px-4 py-2 text-sm text-[#165D6E]/80 backdrop-blur-sm">
+              {/* Version — quieter */}
+              <div className="rounded-full border border-[#165D6E]/14 bg-[#F7F5EF]/72 px-4 py-2 text-sm text-[#8A9A9E] backdrop-blur-sm">
                 v0.3
               </div>
             </div>
@@ -1233,8 +1241,11 @@ export default function App() {
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
             {/* Sidebar */}
-            <div className="rounded-2xl border border-[#E0DCD4] bg-[#F1EEE6]/35 p-5">
-              <div className="text-sm text-[#8A9A9E]">Search & Filters</div>
+            <div className="xl:max-h-[calc(100vh-160px)] xl:overflow-y-auto xl:scrollbar-thin rounded-2xl border border-[#E0DCD4] bg-[#F1EEE6]/35 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-base font-semibold text-[#1F2A2E]">Find a spot</div>
+                <div className="text-xs text-[#B0BAB8]">{places.length} total</div>
+              </div>
 
               {/* Toast */}
               {toast ? (
@@ -1262,335 +1273,281 @@ export default function App() {
                 </div>
               ) : null}
 
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="ramen, Belltown, $$$, date-night..."
-                className="mt-3 w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] placeholder:text-[#B0BAB8] outline-none focus:border-[#2E7682]"
-              />
-
-              {/* Buttons */}
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={copyLink}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
-                >
-                  Copy link
-                </button>
+              {/* Search */}
+              <label className="mt-3 block text-[11px] font-semibold uppercase tracking-widest text-[#8A9A9E]">
+                Search
+              </label>
+              <div className="relative mt-1">
+                <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B0BAB8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
+                </svg>
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Restaurants, dishes, tags…"
+                  className="w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] py-2 pl-9 pr-3 text-sm text-[#1F2A2E] placeholder:text-[#B0BAB8] outline-none focus:border-[#2E7682]"
+                />
               </div>
 
-              {/* Filter row */}
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <select
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
-                >
-                  <option value="">City</option>
-                  {facets.cities.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={neighborhood}
-                  onChange={(e) => setNeighborhood(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
-                >
-                  <option value="">Neighborhood</option>
-                  {facets.hoods.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={cuisine}
-                  onChange={(e) => setCuisine(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
-                >
-                  <option value="">Cuisine</option>
-                  {facets.cuisines.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={tag}
-                  onChange={(e) => setTag(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
-                >
-                  <option value="">Tag</option>
-                  {facets.tags.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={price}
-                  onChange={(e) => setPrice(Number(e.target.value))}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
-                >
-                  <option value={0}>Price</option>
-                  <option value={1}>$</option>
-                  <option value={2}>$$</option>
-                  <option value={3}>$$$</option>
-                  <option value={4}>$$$$</option>
-                </select>
-
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                  className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm"
-                >
-                  {SORTS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
+              {/* Location */}
+              <label className="mt-3 block text-[11px] font-semibold uppercase tracking-widest text-[#8A9A9E]">
+                Location
+              </label>
+              <div className="relative mt-1">
+                <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B0BAB8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                  <circle cx="12" cy="9" r="2.5" />
+                </svg>
+                <input
+                  value={locationQ}
+                  onChange={(e) => setLocationQ(e.target.value)}
+                  placeholder="Seattle, Bellevue, Ballard…"
+                  className="w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] py-2 pl-9 pr-3 text-sm text-[#1F2A2E] placeholder:text-[#B0BAB8] outline-none focus:border-[#2E7682]"
+                />
               </div>
 
-              {/* Toggles */}
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-sm text-[#5A6B6E]">
-                  <input
-                    type="checkbox"
-                    checked={wouldReturn}
-                    onChange={(e) => setWouldReturn(e.target.checked)}
-                  />
-                  Would return
-                </label>
-
-                <div className="flex items-center gap-2 text-sm text-[#8A9A9E]">
-                  Min rating{" "}
-                  <select
-                    value={minRating}
-                    onChange={(e) => setMinRating(Number(e.target.value))}
-                    className="min-h-[36px] rounded-lg border border-[#E0DCD4] bg-[#F7F5EF] px-2 py-1 text-sm"
-                  >
-                    <option value={0}>Any</option>
-                    <option value={3}>3.0+</option>
-                    <option value={3.5}>3.5+</option>
-                    <option value={4}>4.0+</option>
-                    <option value={4.5}>4.5+</option>
-                  </select>
-                </div>
+              {/* Price */}
+              <label className="mt-3 block text-[11px] font-semibold uppercase tracking-widest text-[#8A9A9E]">
+                Price
+              </label>
+              <div className="mt-1 flex gap-1.5">
+                {[1, 2, 3, 4].map((level) => {
+                  const active = prices.includes(level);
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => togglePrice(level)}
+                      className={[
+                        "flex-1 rounded-xl border py-1.5 text-center text-sm font-semibold transition-all duration-150",
+                        active
+                          ? "border-[#165D6E]/40 bg-[#165D6E]/15 text-[#165D6E]"
+                          : "border-[#E0DCD4] bg-[#F7F5EF] text-[#8A9A9E] hover:bg-[#F1EEE6] hover:text-[#5A6B6E]",
+                      ].join(" ")}
+                    >
+                      {"$".repeat(level)}
+                    </button>
+                  );
+                })}
               </div>
+
+              {/* Min score */}
+              <label className="mt-3 block text-[11px] font-semibold uppercase tracking-widest text-[#8A9A9E]">
+                Min score
+              </label>
+              <div className="mt-1 flex gap-1.5">
+                {[
+                  { value: 0, label: "Any" },
+                  { value: 6, label: "6+" },
+                  { value: 7, label: "7+" },
+                  { value: 8, label: "8+" },
+                  { value: 9, label: "9+" },
+                ].map((opt) => {
+                  const active = minRating === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setMinRating(opt.value)}
+                      className={[
+                        "flex-1 rounded-xl border py-1.5 text-center text-sm font-semibold transition-all duration-150",
+                        active
+                          ? "border-[#165D6E]/40 bg-[#165D6E]/15 text-[#165D6E]"
+                          : "border-[#E0DCD4] bg-[#F7F5EF] text-[#8A9A9E] hover:bg-[#F1EEE6] hover:text-[#5A6B6E]",
+                      ].join(" ")}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Sort by */}
+              <label className="mt-3 block text-[11px] font-semibold uppercase tracking-widest text-[#8A9A9E]">
+                Sort by
+              </label>
+              <select
+                value={sort}
+                onChange={(e) => {
+                  setSort(e.target.value);
+                  if (e.target.value === "nearest" && !myLoc) requestLocation();
+                }}
+                className="mt-1 w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
+              >
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
 
               {/* Location button for nearest */}
               {sort === "nearest" ? (
-                <div className="mt-3">
+                <div className="mt-2">
                   <button
                     type="button"
                     onClick={requestLocation}
-                    className="min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
+                    className="min-h-[36px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
                   >
                     {myLoc ? "Update my location" : "Use my location"}
                   </button>
-                  {locErr ? <div className="mt-2 text-xs text-red-300">{locErr}</div> : null}
+                  {locErr ? <div className="mt-1 text-xs text-red-400">{locErr}</div> : null}
                 </div>
               ) : null}
 
-              {/* Results count */}
-              <div className="mt-4 text-xs text-[#B0BAB8]">
-                {regionFiltered.length} / {places.length} spots
+              {/* Actions */}
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={toggleNearMe}
+                  className={[
+                    "min-h-[36px] flex-[2] rounded-xl border px-3 py-2 text-sm font-semibold transition-all duration-150",
+                    nearMeActive
+                      ? "border-[#165D6E] bg-[#165D6E] text-white shadow-[0_2px_8px_rgba(22,93,110,0.25)]"
+                      : "border-[#165D6E]/30 bg-[#165D6E]/10 text-[#165D6E] hover:bg-[#165D6E]/18",
+                  ].join(" ")}
+                >
+                  <span className="flex items-center justify-center gap-1.5">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor"><path d="M12 3L19 20L12 16.9L5 20L12 3Z" /></svg>
+                    {nearMeActive ? "Near Me ✓" : "Near Me"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="min-h-[36px] flex-1 rounded-xl border border-[#E0DCD4] bg-transparent px-3 py-2 text-xs font-medium text-[#8A9A9E] hover:bg-[#F1EEE6] hover:text-[#5A6B6E]"
+                >
+                  Clear all
+                </button>
+              </div>
+
+              {/* Active filter chips */}
+              {activeFilters.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {activeFilters.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={f.clear}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#165D6E]/20 bg-[#165D6E]/8 px-2.5 py-1 text-[11px] font-semibold text-[#165D6E] transition-colors hover:bg-[#165D6E]/15"
+                    >
+                      {f.label}
+                      <span className="text-[9px] opacity-60">✕</span>
+                    </button>
+                  ))}
+                  {nearMeActive ? (
+                    <button
+                      type="button"
+                      onClick={toggleNearMe}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#165D6E]/20 bg-[#165D6E]/8 px-2.5 py-1 text-[11px] font-semibold text-[#165D6E] transition-colors hover:bg-[#165D6E]/15"
+                    >
+                      Near Me
+                      <span className="text-[9px] opacity-60">✕</span>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Divider + results count */}
+              <div className="mt-3 flex items-center gap-2.5">
+                <div className="h-px flex-1 bg-[#E0DCD4]" />
+                <span className="text-xs font-semibold text-[#8A9A9E]">
+                  {regionFiltered.length} {regionFiltered.length === 1 ? "spot" : "spots"}
+                </span>
+                <div className="h-px flex-1 bg-[#E0DCD4]" />
               </div>
 
               {/* Cards */}
-              <div className="mt-3 space-y-2">
+              <div className="mt-2.5 space-y-2.5">
                 {regionFiltered.map((p) => {
-                  const dist =
-                    sort === "nearest" &&
-                    myLoc &&
-                    Number.isFinite(Number(p.lat)) &&
-                    Number.isFinite(Number(p.lon))
-                      ? haversineMiles(myLoc.lat, myLoc.lon, Number(p.lat), Number(p.lon))
-                      : null;
-
-                  const isEditing = editingId === p.id;
+                  const isSelected = selectedId === p.id;
+                  const ratingText = ratingLabel(p.rating);
+                  const wideRating = ratingText.length >= 3;
 
                   return (
                     <div
                       key={p.id}
+                      onClick={() => flyToPlace(p)}
                       className={[
-                        "rounded-2xl border p-3 transition",
-                        selectedId === p.id
-                          ? "border-[#2E7682] bg-[#E0DCD4]/40"
-                          : "border-[#E0DCD4] bg-[#F7F5EF]/40 hover:bg-[#F1EEE6]/50",
+                        "cursor-pointer rounded-2xl border p-3.5 transition-all duration-150",
+                        isSelected
+                          ? "border-[#165D6E]/30 bg-[#165D6E]/[0.05] shadow-[0_2px_10px_rgba(22,93,110,0.06)]"
+                          : "border-[#E0DCD4] bg-[#F7F5EF]/55 hover:border-[#D6D1C8] hover:bg-[#F7F5EF]",
                       ].join(" ")}
                     >
+                      {/* Top row */}
                       <div className="flex items-start justify-between gap-3">
-                        <button type="button" onClick={() => flyToPlace(p)} className="flex-1 text-left">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-semibold">{p.name}</div>
-                              <div className="mt-1 text-xs text-[#8A9A9E]">
-                                {p.neighborhood ? `${p.neighborhood} • ` : ""}
-                                {p.city || ""}
-                              </div>
-                            </div>
-
-                            <div className="text-right">
-                              <div className="text-sm text-[#2A3A3E]">
-                                {ratingLabel(p.rating) === "New" ? "New" : `${ratingLabel(p.rating)}★`}
-                              </div>
-                              <div className="text-xs text-[#B0BAB8]">
-                                {p.price ? priceLabel(p.price) : ""}
-                                {dist != null ? ` • ${dist.toFixed(1)} mi` : ""}
-                              </div>
-                            </div>
+                        <div className="min-w-0 pr-2">
+                          <div className="text-[22px] font-semibold tracking-[-0.03em] leading-[1.05] text-[#1F2A2E]">
+                            {p.name}
                           </div>
-                        </button>
 
-                        <button
-                          type="button"
-                          onClick={() => (isEditing ? cancelEdit() : startEdit(p))}
-                          className="min-h-[44px] rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-xs text-[#2A3A3E] hover:bg-[#F1EEE6]"
-                        >
-                          {isEditing ? "Close" : "Edit"}
-                        </button>
+                          <div className="mt-1 text-[12px] font-medium tracking-[0.01em] text-[#9AA6A8]">
+                            {[p.neighborhood, p.city].filter(Boolean).join(" • ")}
+                            {p.price ? ` • ${priceLabel(p.price)}` : ""}
+                          </div>
+                        </div>
+
+                        {p.rating != null ? (
+                          <div
+                            className={[
+                              "shrink-0 inline-flex items-center justify-center rounded-full border-2 border-white/85 font-semibold leading-none tabular-nums shadow-[0_4px_12px_rgba(0,0,0,0.10)]",
+                              wideRating
+                                ? "h-[42px] w-[42px] text-[15px] tracking-[-0.04em]"
+                                : "h-[42px] w-[42px] text-[20px] tracking-[-0.03em]",
+                            ].join(" ")}
+                            style={{
+                              background: ratingToHex(p.rating) || UNRATED_COLOR,
+                              color: markerTextColor(p.rating),
+                            }}
+                          >
+                            {ratingText}
+                          </div>
+                        ) : null}
                       </div>
 
-                      {/* Photo preview */}
-                      {p.photo ? (
-                        <img src={p.photo} alt={p.name} className="mt-3 h-28 w-full rounded-xl object-cover" />
-                      ) : null}
+                      {/* Note */}
+                      {p.notes ? (
+                        <p className="mt-3 min-h-[2.8rem] line-clamp-2 text-[14px] leading-[1.5] text-[#627376]">
+                          {p.notes}
+                        </p>
+                      ) : (
+                        <div className="mt-3 min-h-[2.8rem]" />
+                      )}
 
-                      {/* Tags */}
-                      {p.tags?.length ? (
-                        <div className="mt-3 flex flex-wrap gap-1">
-                          {p.tags.slice(0, 6).map((t) => (
-                            <span
-                              key={t}
-                              className="rounded-full border border-[#E0DCD4] bg-[#F1EEE6] px-2 py-0.5 text-[11px] text-[#5A6B6E]"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {/* Notes */}
-                      {p.notes ? <div className="mt-2 text-sm text-[#5A6B6E]">{p.notes}</div> : null}
-
-                      {/* Edit panel */}
-                      {isEditing ? (
-                        <div className="mt-3 rounded-2xl border border-[#E0DCD4] bg-[#F7F5EF]/60 p-3">
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="text-xs text-[#8A9A9E]">
-                              Rating
-                              <input
-                                value={draft?.rating ?? ""}
-                                onChange={(e) => setDraft((d) => ({ ...(d || {}), rating: e.target.value }))}
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="5"
-                                placeholder="4.5"
-                                className="mt-1 min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
-                              />
-                            </label>
-
-                            <label className="text-xs text-[#8A9A9E]">
-                              Price
-                              <select
-                                value={draft?.price ?? ""}
-                                onChange={(e) => setDraft((d) => ({ ...(d || {}), price: e.target.value }))}
-                                className="mt-1 min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
-                              >
-                                <option value="">—</option>
-                                <option value="1">$</option>
-                                <option value="2">$$</option>
-                                <option value="3">$$$</option>
-                                <option value="4">$$$$</option>
-                              </select>
-                            </label>
-                          </div>
-
-                          <label className="mt-3 flex items-center gap-2 text-sm text-[#5A6B6E]">
-                            <input
-                              type="checkbox"
-                              checked={!!draft?.wouldReturn}
-                              onChange={(e) => setDraft((d) => ({ ...(d || {}), wouldReturn: e.target.checked }))}
-                            />
-                            Would return
-                          </label>
-
-                          <label className="mt-3 block text-xs text-[#8A9A9E]">
-                            Photo URL
-                            <input
-                              value={draft?.photo ?? ""}
-                              onChange={(e) => setDraft((d) => ({ ...(d || {}), photo: e.target.value }))}
-                              placeholder="https://..."
-                              className="mt-1 min-h-[44px] w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
-                            />
-                          </label>
-
-                          <label className="mt-3 block text-xs text-[#8A9A9E]">
-                            Notes
-                            <textarea
-                              value={draft?.notes ?? ""}
-                              onChange={(e) => setDraft((d) => ({ ...(d || {}), notes: e.target.value }))}
-                              rows={3}
-                              placeholder="What did you get? Was it worth it?"
-                              className="mt-1 w-full rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#1F2A2E] outline-none focus:border-[#2E7682]"
-                            />
-                          </label>
-
-                          <div className="mt-3 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => saveEdit(p.id)}
-                              className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="mt-3 flex gap-2">
+                      {/* Actions */}
+                      <div
+                        className="mt-3.5 grid grid-cols-2 gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <a
                           href={mapsLink(p)}
                           target="_blank"
                           rel="noreferrer"
-                          className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-center text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
+                          className="rounded-xl border border-[#165D6E]/25 bg-[#165D6E]/10 px-3 py-2.5 text-center text-[13px] font-semibold text-[#165D6E] transition-colors hover:bg-[#165D6E]/16"
                         >
                           Open in Maps
                         </a>
+
                         {p.website ? (
                           <a
                             href={p.website}
                             target="_blank"
                             rel="noreferrer"
-                            className="min-h-[44px] flex-1 rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2 text-center text-sm text-[#2A3A3E] hover:bg-[#F1EEE6]"
+                            className="rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2.5 text-center text-[13px] font-medium text-[#5A6B6E] transition-colors hover:bg-[#F1EEE6] hover:text-[#2A3A3E]"
                           >
                             Website
                           </a>
-                        ) : null}
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="rounded-xl border border-[#E0DCD4] bg-[#F7F5EF] px-3 py-2.5 text-center text-[13px] font-medium text-[#5A6B6E] opacity-40 cursor-not-allowed"
+                          >
+                            Website
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1599,9 +1556,9 @@ export default function App() {
             </div>
 
             {/* Map */}
-            <div className="rounded-2xl border border-[#E0DCD4] bg-[#F1EEE6]/35 p-5">
+            <div className="flex h-full min-h-[620px] flex-col rounded-2xl border border-[#E0DCD4] bg-[#F1EEE6]/35 p-5">
               <div
-                className="relative mt-2 overflow-hidden rounded-2xl border border-[#E0DCD4]"
+                className="relative flex-1 overflow-hidden rounded-2xl border border-[#E0DCD4]"
                 style={{
                   "--map-controls-top": activeRegion === "seattle" ? "108px" : "72px",
                 }}
@@ -1617,7 +1574,7 @@ export default function App() {
                   center={[47.6062, -122.3321]}
                   zoom={11}
                   zoomControl={false}
-                  style={{ height: "72vh", minHeight: 620, width: "100%" }}
+                  style={{ height: "100%", width: "100%" }}
                   maxBounds={AREA_BOUNDS}
                   maxBoundsViscosity={1.0}
                   whenReady={(e) => {
@@ -1768,7 +1725,12 @@ export default function App() {
           {/* ✅ backdrop no longer steals clicks (fixes click-outside-to-close) */}
           <div className="pointer-events-none absolute inset-0 bg-[#0D0906]/80 backdrop-blur-sm" />
 
-          <div className="relative w-[92vw] max-w-4xl rounded-3xl border border-[#165D6E]/20 bg-[#F7F5EF]/95 shadow-2xl">
+          <div
+            className={[
+              "relative w-[92vw] rounded-3xl border border-[#165D6E]/20 bg-[#F7F5EF]/95 shadow-2xl",
+              accountTab === "caseStudy" ? "max-w-[1500px]" : "max-w-4xl",
+            ].join(" ")}
+          >
             <div className="flex max-h-[80vh] min-h-[420px] flex-col overflow-hidden md:min-h-[560px]">
               {/* ✅ Subtle header surface (replaces "Windows 95" divider) */}
               <div className="bg-white/3 p-8">
@@ -1807,6 +1769,7 @@ export default function App() {
                   {[
                     ["about", "About me"],
                     ["resume", "Resume"],
+                    ["caseStudy", "Case study"],
                     ["contact", "Contact"],
                   ].map(([key, label]) => {
                     const active = accountTab === key;
@@ -1881,6 +1844,69 @@ export default function App() {
                     </div>
                   </div>
                 ) : null}
+
+                {accountTab === "caseStudy" ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(31,42,46,0.55)]">
+                        Case Study
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCaseStudyFull(true)}
+                        className="min-h-[44px] rounded-full border border-[#165D6E]/30 bg-[#165D6E]/10 px-4 py-2 text-sm font-medium text-[#165D6E] transition-colors hover:bg-[#165D6E]/20"
+                      >
+                        ⛶ Full Screen
+                      </button>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#E0DCD4] bg-[#F7F5EF]/40 p-4">
+                      <div className="mb-3">
+                        <div className="text-lg font-semibold text-[#1F2A2E]">
+                          Reel Journal + Smart AI Reels Summary App
+                        </div>
+                        <div className="mt-1 text-sm text-[#8A9A9E]">
+                          Walkthrough and case study board
+                        </div>
+                      </div>
+
+                      <div className="max-h-[62vh] overflow-auto rounded-2xl border border-[#E0DCD4] bg-white">
+                        <img
+                          src={CaseStudyImage}
+                          alt="Case study board for Reel Journal and Smart AI Reels Summary App"
+                          className="block h-auto max-w-none cursor-pointer"
+                          onClick={() => setCaseStudyFull(true)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Case study fullscreen overlay */}
+                {caseStudyFull && (
+                  <div
+                    className="fixed inset-0 z-[2000] flex items-start justify-center overflow-auto bg-black/80 backdrop-blur-sm"
+                    onMouseDown={(e) => {
+                      if (e.target === e.currentTarget) setCaseStudyFull(false);
+                    }}
+                  >
+                    <div className="relative min-h-full w-full p-4">
+                      <button
+                        type="button"
+                        onClick={() => setCaseStudyFull(false)}
+                        className="fixed right-5 top-5 z-[2001] grid h-11 w-11 place-items-center rounded-full bg-white/90 text-lg font-bold text-[#1F2A2E] shadow-lg backdrop-blur-sm transition-colors hover:bg-white"
+                        aria-label="Close full screen"
+                      >
+                        ✕
+                      </button>
+                      <img
+                        src={CaseStudyImage}
+                        alt="Case study board for Reel Journal and Smart AI Reels Summary App"
+                        className="mx-auto block h-auto w-full max-w-[2000px]"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {accountTab === "contact" ? (
                   <div className="space-y-4 text-base md:text-lg">
